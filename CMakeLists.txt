@@ -37,10 +37,21 @@ ADD_EXECUTABLE ( test
     src/test.cpp
 )
 
+IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" )
+    TARGET_LINK_LIBRARIES ( test
+      ${GLFW_LIBRARY}
+    )
+ENDIF ( )
+
+IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
+    TARGET_LINK_LIBRARIES ( test
+      ${GLFW_STATIC_LIBRARIES}
+    )
+ENDIF ( )
+
 TARGET_LINK_LIBRARIES ( test
     dataset
     renderer
     ${HDF5_LIBRARIES}
-    ${GLFW_LIBRARY}
     ${OPENGL_LIBRARIES}
 )

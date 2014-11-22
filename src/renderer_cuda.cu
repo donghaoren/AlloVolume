@@ -173,9 +173,9 @@ public:
         int pixel_count = width * height;
         int cuda_blocks = pixel_count / CUDA_MAX_THREADS;
         if(pixel_count % CUDA_MAX_THREADS != 0) cuda_blocks += 1;
-        #ifndef CPU_EMULATE
+    #ifndef CPU_EMULATE
         get_rays_kernel<<<cuda_blocks, CUDA_MAX_THREADS>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
-        #else
+    #else
         blockDim.x = CUDA_MAX_THREADS;
         for(int i = 0; i < cuda_blocks; i++) {
             for(int j = 0; j < CUDA_MAX_THREADS; j++) {
@@ -184,7 +184,7 @@ public:
                 get_rays_kernel(ex, ey, ez, origin, width, height, pixel_count, rays);
             }
         }
-        #endif
+    #endif
     }
 
     Vector origin, up, direction;
@@ -588,9 +588,9 @@ public:
         pms.tf_max = tf->getMetadata()->input_max;
         pms.tf_is_log = tf->getMetadata()->is_log_scale;
         pms.tf_size = tf->getMetadata()->size;
-        #ifndef CPU_EMULATE
+    #ifndef CPU_EMULATE
         ray_marching_kernel<<<cuda_blocks, CUDA_MAX_THREADS>>>(pms);
-        #else
+    #else
         blockDim.x = CUDA_MAX_THREADS;
         for(int i = 0; i < cuda_blocks; i++) {
             for(int j = 0; j < CUDA_MAX_THREADS; j++) {
@@ -599,7 +599,7 @@ public:
                 ray_marching_kernel(pms);
             }
         }
-        #endif
+    #endif
     }
 
     MirroredMemory<BlockDescription> blocks;
