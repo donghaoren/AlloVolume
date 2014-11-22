@@ -250,10 +250,6 @@ public:
             blendGaussian(i, 0.1, c);
         }
 
-        for(int i = 0; i < metadata.size; i++) {
-            printf("%f %f %f %f\n", content_cpu[i].r, content_cpu[i].g, content_cpu[i].b, content_cpu[i].a);
-        }
-
         cudaUpload<Color>(content_gpu, content_cpu, metadata.size);
     }
 
