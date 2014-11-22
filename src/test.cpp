@@ -167,6 +167,8 @@ void display( GLFWwindow* window )
         glDrawPixels(img->getWidth(), img->getHeight(),
             GL_RGBA, GL_FLOAT, img->getPixels());
 
+        glRasterPos3f(-1, 0, 0);
+        glDrawPixels(tf->getMetadata()->size, 1, GL_RGBA, GL_FLOAT, tf->getContent());
 
         // Update Screen
         glfwSwapBuffers(window);
@@ -181,7 +183,8 @@ int main(int argc, char** argv)
 {
     volume = Dataset_FLASH_Create("/Users/donghao/super3d_hdf5_plt_cnt_0122", "/dens");
     tf = TransferFunction::CreateTest();
-    lens = Lens::CreateEquirectangular(Vector(-1e10, 0, 0), Vector(0, 0, 1), Vector(1, 0, 0));
+    lens_origin = Vector(-1e10, 0, 0);
+    lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
     img = Image::Create(1600, 800);
     renderer = VolumeRenderer::CreateGPU();
     renderer->setVolume(volume);
@@ -189,8 +192,6 @@ int main(int argc, char** argv)
     renderer->setTransferFunction(tf);
     renderer->setImage(img);
 
-    lens_origin = Vector(-1.013e10, 1e6, 1e6);
-    lens->setParameter("origin", &lens_origin);
     renderer->render();
     img->setNeedsDownload();
 
