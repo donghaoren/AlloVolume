@@ -50,6 +50,7 @@ struct Color {
     float r, g, b, a;
     Color() { }
     GPUEnable Color(float r_, float g_, float b_, float a_) : r(r_), g(g_), b(b_), a(a_) { }
+    GPUEnable Color(float r_, float g_, float b_) : r(r_), g(g_), b(b_), a(1) { }
     GPUEnable Color blendTo(Color c) {
         return Color(
             a * r + (1.0 - a) * c.r,
@@ -58,6 +59,28 @@ struct Color {
             a * a + (1.0 - a) * c.a
         );
     }
+    GPUEnable Color blendToDifferential(Color c, float ratio) {
+        float dt = pow(1 - a, ratio);
+        return Color(
+            (1.0 - dt) * r + dt * c.r,
+            (1.0 - dt) * g + dt * c.g,
+            (1.0 - dt) * b + dt * c.b,
+            (1.0 - dt) * a + dt * c.a
+        );
+    }
+
+    GPUEnable Color& operator += (const Color& v) { r += v.r; g += v.g; b += v.b; a += v.a; return *this; }
+    GPUEnable Color& operator -= (const Color& v) { r -= v.r; g -= v.g; b -= v.b; a -= v.a; return *this; }
+    GPUEnable Color& operator *= (const Color& v) { r *= v.r; g *= v.g; b *= v.b; a *= v.a; return *this; }
+    GPUEnable Color& operator /= (const Color& v) { r /= v.r; g /= v.g; b /= v.b; a /= v.a; return *this; }
+    GPUEnable Color& operator *= (float s) { r *= s; g *= s; b *= s; a *= s; return *this; }
+    GPUEnable Color& operator /= (float s) { r /= s; g /= s; b /= s; a /= s; return *this; }
+    GPUEnable Color operator + (const Color& v) const { return Color(r + v.r, g + v.g, b + v.b, a + v.a); }
+    GPUEnable Color operator - (const Color& v) const { return Color(r - v.r, g - v.g, b - v.b, a - v.a); }
+    GPUEnable Color operator * (const Color& v) const { return Color(r * v.r, g * v.g, b * v.b, a * v.a); }
+    GPUEnable Color operator / (const Color& v) const { return Color(r / v.r, g / v.g, b / v.b, a / v.a); }
+    GPUEnable Color operator * (float v) const { return Color(r * v, g * v, b * v, a * v); }
+    GPUEnable Color operator / (float v) const { return Color(r / v, g / v, b / v, a / v); }
 };
 
 }
