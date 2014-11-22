@@ -245,9 +245,9 @@ public:
         }
         for(float i = 0; i <= metadata.input_max; i+=1) {
             float t = (float)i / metadata.input_max;
-            Color c = tf_interpolate(gist_ncer_colormap, 0, 1, gist_ncer_colormap_length, t);
-            c.a = sqrt(t);
-            blendGaussian(i, 0.2, c);
+            Color c = tf_interpolate(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
+            c.a = pow(t, 0.5f);
+            blendGaussian(i, 0.1, c);
         }
 
         for(int i = 0; i < metadata.size; i++) {
@@ -478,34 +478,46 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
     int block_cursor = 0;
     Color color(0, 0, 0, 0);
     // Simple solution: fixed step size.
+    float kmax = 1e40;
     while(block_cursor < p.block_count) {
         BlockDescription block = p.blocks[block_cursor];
         float kin, kout;
         if(intersectBox(pos, d, block.min, block.max, &kin, &kout) && kout >= 0) {
             if(kin < 0) kin = 0;
-            // Render this block.
-            float distance = kout - kin;
-            float voxel_size = (block.max.x - block.min.x) / block.xsize;
-            int steps = distance / voxel_size;
-            float step_size = distance / steps;
+            if(kout > kmax) kout = kmax;
+            if(kin < kout) {
+                // Render this block.
+                float distance = kout - kin;
+                float voxel_size = (block.max.x - block.min.x) / block.xsize;
+                int steps = ceil(distance / voxel_size * 3);
+                float step_size = distance / steps;
 
-            for(int i = steps - 1; i >= 0; i--) {
-                float k = kin + step_size * ((float)i + 0.5f);
-                Vector pt = pos + d * k;
-                float value = block_interploate(pt, block.min, block.max, p.data + block.offset, block.xsize, block.ysize, block.zsize);
-                float v;
-                if(p.tf_is_log) v = log(1 + value);
-                else v = value;
-                Color c = tf_interpolate(p.tf, p.tf_min, p.tf_max, p.tf_size, v);
-                // float v = sin(pt.x / 4e8) + sin(pt.y / 4e8) + sin(pt.z / 4e8);
-                // Color c = tf_interpolate(p.tf, -3, 3, p.tf_size, v);
-                // pt /= 1e9;
-                // float v = sin(pt.x / 4) + sin(pt.y / 4) + sin(pt.z / 4);
-                // v = v * v / 30;
-                //printf("c = %f %f %f %f\n", c.r, c.g, c.b, c.a);
-                color = c.blendToDifferential(color, step_size / 5e8);
-                //color += c / 2e9 * step_size;
+                for(int i = steps - 1; i >= 0; i--) {
+                    float k = kin + step_size * ((float)i + 0.5f);
+                    Vector pt = pos + d * k;
+
+                    // pt /= 5e10;
+                    // float value = (sin(pt.x) + sin(pt.y) + sin(pt.z)) / 3;
+                    // float v = value;
+                    // Color c = tf_interpolate(p.tf, -1, 1, p.tf_size, v);
+
+                    float value = block_interploate(pt, block.min, block.max, p.data + block.offset, block.xsize, block.ysize, block.zsize);
+                    float v;
+                    if(p.tf_is_log) v = log(1 + value);
+                    else v = value;
+                    Color c = tf_interpolate(p.tf, p.tf_min, p.tf_max, p.tf_size, v);
+
+                    // float v = sin(pt.x / 4e8) + sin(pt.y / 4e8) + sin(pt.z / 4e8);
+                    // Color c = tf_interpolate(p.tf, -3, 3, p.tf_size, v);
+                    // pt /= 1e9;
+                    // float v = sin(pt.x / 4) + sin(pt.y / 4) + sin(pt.z / 4);
+                    // v = v * v / 30;
+                    //printf("c = %f %f %f %f\n", c.r, c.g, c.b, c.a);
+                    color = c.blendToDifferential(color, step_size / 1e9);
+                    //color = color + c * step_size / 1e9;
+                }
             }
+            //kmax = kin;
         }
         block_cursor += 1;
     }
