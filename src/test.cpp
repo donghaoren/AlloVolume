@@ -179,7 +179,7 @@ void display( GLFWwindow* window )
 
 int main(int argc, char** argv)
 {
-    volume = Dataset_FLASH_Create("/Users/donghao/super3d_hdf5_plt_cnt_0122", "/dens");
+    volume = Dataset_FLASH_Create("super3d_hdf5_plt_cnt_0122", "/dens");
     tf = TransferFunction::CreateTest();
     lens_origin = Vector(-0.4e10, 1e8, -1e8);
     lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));

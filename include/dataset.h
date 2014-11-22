@@ -2,6 +2,7 @@
 #define ALLOVOLUME_DATASET_H
 
 #include "utils.h"
+#include <stdlib.h>
 
 namespace allovolume {
 
