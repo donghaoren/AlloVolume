@@ -2,6 +2,8 @@
 #include <math.h>
 #include <algorithm>
 
+#define CUDA_MAX_THREADS 1024
+
 using namespace std;
 
 namespace allovolume {
@@ -110,9 +112,9 @@ public:
         Vector ey = ex.cross(up).normalize();
         Vector ez = ex.cross(ey).normalize();
         int pixel_count = width * height;
-        int cuda_blocks = pixel_count / 512;
-        if(pixel_count % 512 != 0) cuda_blocks += 1;
-        get_rays_kernel<<<cuda_blocks, 512>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
+        int cuda_blocks = pixel_count / CUDA_MAX_THREADS;
+        if(pixel_count % CUDA_MAX_THREADS != 0) cuda_blocks += 1;
+        get_rays_kernel<<<cuda_blocks, CUDA_MAX_THREADS>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
     }
 
     Vector origin, up, direction;
@@ -340,12 +342,13 @@ __global__ void ray_marching_kernel(ray_marching_parameters_t p) {
             // Render this block.
             float distance = kout - kin;
 
-            int steps = 32;
+            int steps = 4;
             for(int i = 0; i < steps; i++) {
                 float k = kin + distance * ((float)i + 0.5f) / steps;
                 Vector pt = pos + d * k;
                 float value = block_interploate(pt, block.min, block.max, p.data + block.offset, block.xsize, block.ysize, block.zsize);
-                float v = log(1 + value) / 10;
+                float v = log(1 + value);
+                v = sin(v * 2) * sin(v * 2) * v / 10;
                 // pt /= 1e9;
                 // float v = sin(pt.x / 4) + sin(pt.y / 4) + sin(pt.z / 4);
                 // v = v * v / 30;
@@ -410,12 +413,9 @@ public:
         int pixel_count = image->getWidth() * image->getHeight();
         rays.allocate(pixel_count);
         lens->getRaysGPU(image->getWidth(), image->getHeight(), rays.gpu);
-        //rays.upload();
 
-
-
-        int cuda_blocks = pixel_count / 512;
-        if(pixel_count % 512 != 0) cuda_blocks += 1;
+        int cuda_blocks = pixel_count / CUDA_MAX_THREADS;
+        if(pixel_count % CUDA_MAX_THREADS != 0) cuda_blocks += 1;
         ray_marching_parameters_t pms;
         pms.rays = rays.gpu;
         pms.pixels = image->getPixelsGPU();
@@ -424,7 +424,7 @@ public:
         pms.pixel_count = pixel_count;
         pms.block_count = block_count;
         pms.step_size = 0.01;
-        ray_marching_kernel<<<cuda_blocks, 512>>>(pms);
+        ray_marching_kernel<<<cuda_blocks, CUDA_MAX_THREADS>>>(pms);
     }
 
     MirroredMemory<BlockDescription> blocks;

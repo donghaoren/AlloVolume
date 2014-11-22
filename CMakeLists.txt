@@ -10,9 +10,12 @@ SET ( LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}/lib" )
 
 SET ( CUDA_HOST_COMPILER clang )
 FIND_PACKAGE ( CUDA )
+FIND_PACKAGE ( HDF5 )
+FIND_PACKAGE ( GLFW REQUIRED )
 
 INCLUDE_DIRECTORIES (
   include
+  ${HDF5_INCLUDE_DIRS}
 )
 
 ADD_LIBRARY ( dataset
@@ -30,7 +33,7 @@ ADD_EXECUTABLE ( test
 TARGET_LINK_LIBRARIES ( test
     dataset
     renderer
-    hdf5
-    glfw3
+    ${HDF5_LIBRARIES}
+    ${GLFW_LIBRARY}
     "-framework OpenGL"
 )
