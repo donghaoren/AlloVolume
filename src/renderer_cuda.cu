@@ -221,7 +221,7 @@ inline CUDA_DEVICE __host__ float clampf(float value, float min, float max) {
 }
 
 CUDA_DEVICE __host__ Color tf_interpolate(Color* tf, float tf_min, float tf_max, int tf_size, float t) {
-    float pos = (t - tf_min) / (tf_max - tf_min) * tf_size - 0.5f;
+    float pos = clampf((t - tf_min) / (tf_max - tf_min), 0, 1) * tf_size - 0.5f;
     int idx = floor(pos);
     idx = clamp(idx, 0, tf_size - 2);
     float diff = pos - idx;
@@ -244,10 +244,11 @@ public:
             content_cpu[i] = Color(0, 0, 0, 0);
         }
         for(float i = 0; i <= metadata.input_max; i+=1) {
+            //if(i != round(log(pow(10.0, 3.0)))) continue;
             float t = (float)i / metadata.input_max;
             Color c = tf_interpolate(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
             c.a = pow(t, 0.5f);
-            blendGaussian(i, 0.1, c);
+            blendGaussian(i, 0.2, c);
         }
 
         cudaUpload<Color>(content_gpu, content_cpu, metadata.size);
@@ -467,6 +468,15 @@ CUDA_DEVICE float block_interploate(Vector pos, Vector min, Vector max, float* d
 
 CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    // {
+    //     int x = abs(idx % 1600 - 784);
+    //     int y = abs(idx / 1600 - (800 - 231));
+    //     if(x <= 0 && y <= 0) {
+    //     } else {
+    //         p.pixels[idx] = Color(0, 0, 0, 0);
+    //         return;
+    //     }
+    // }
     if(idx >= p.pixel_count) return;
     Lens::Ray ray = p.rays[idx];
     Vector pos = ray.origin;
@@ -499,8 +509,12 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
 
                     float value = block_interploate(pt, block.min, block.max, p.data + block.offset, block.xsize, block.ysize, block.zsize);
                     float v;
-                    if(p.tf_is_log) v = log(1 + value);
-                    else v = value;
+                    if(p.tf_is_log) {
+                        if(value < 0) value = 0;
+                        v = log(1 + value);
+                    } else {
+                        v = value;
+                    }
                     Color c = tf_interpolate(p.tf, p.tf_min, p.tf_max, p.tf_size, v);
 
                     // float v = sin(pt.x / 4e8) + sin(pt.y / 4e8) + sin(pt.z / 4e8);
@@ -509,7 +523,7 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
                     // float v = sin(pt.x / 4) + sin(pt.y / 4) + sin(pt.z / 4);
                     // v = v * v / 30;
                     //printf("c = %f %f %f %f\n", c.r, c.g, c.b, c.a);
-                    color = c.blendToDifferential(color, step_size / 1e9);
+                    color = c.blendToDifferential(color, step_size / 5e8);
                     //color = color + c * step_size / 1e9;
                 }
             }
@@ -517,7 +531,6 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
         }
         block_cursor += 1;
     }
-    //printf("color = %f %f %f %f\n", color.r, color.g, color.b, color.a);
     p.pixels[idx] = color;
 }
 

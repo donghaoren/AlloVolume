@@ -177,14 +177,34 @@ void display( GLFWwindow* window )
     }
 }
 
+#ifndef _WIN32
+#include <sys/time.h>
+double getPreciseTime() {
+    timeval t;
+    gettimeofday(&t, 0);
+    double s = t.tv_sec;
+    s += t.tv_usec / 1000000.0;
+    return s;
+}
+#else
+#include <windows.h>
+double getPreciseTime() {
+    LARGE_INTEGER data, frequency;
+    QueryPerformanceCounter(&data);
+    QueryPerformanceFrequency(&frequency);
+    return (double)data.QuadPart / (double)frequency.QuadPart;
+    //return 0;
+}
+#endif
+
 int main(int argc, char** argv)
 {
     volume = Dataset_FLASH_Create("super3d_hdf5_plt_cnt_0122", "/dens");
     tf = TransferFunction::CreateTest();
-    lens_origin = Vector(-0.4e10, 1e8, -1e8);
-    lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
-    // lens_origin = Vector(0, 0, 1e10);
-    // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
+    // lens_origin = Vector(-0.1e10, 1e8, -1e8);
+    // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
+    lens_origin = Vector(-2e7, 1e7, 0.1e10);
+    lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
     img = Image::Create(1600, 800);
     renderer = VolumeRenderer::CreateGPU();
     renderer->setVolume(volume);
@@ -195,13 +215,22 @@ int main(int argc, char** argv)
     renderer->render();
     img->setNeedsDownload();
 
-    GLFWwindow* window = initWindow(800, 400);
-    if( NULL != window )
-    {
-        display( window );
-    }
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    double t0 = getPreciseTime();
+    renderer->render();
+    double render_time = getPreciseTime() - t0;
+    printf("Render time:  %.2lf ms\n", render_time * 1000.0);
+
+    FILE* fout = fopen("render_result.raw16rgba", "wb");
+    fwrite(img->getPixels(), 1, sizeof(Color) * img->getWidth() * img->getHeight(), fout);
+    fclose(fout);
+
+    // GLFWwindow* window = initWindow(800, 400);
+    // if( NULL != window )
+    // {
+    //     display( window );
+    // }
+    // glfwDestroyWindow(window);
+    // glfwTerminate();
     return 0;
 }
 
