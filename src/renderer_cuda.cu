@@ -528,7 +528,7 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
                     // float v = sin(pt.x / 4) + sin(pt.y / 4) + sin(pt.z / 4);
                     // v = v * v / 30;
                     //printf("c = %f %f %f %f\n", c.r, c.g, c.b, c.a);
-                    color = c.blendToDifferential(color, step_size / 5e8);
+                    color = c.blendToDifferential(color, step_size / 1e9);
                     //color = color + c * step_size / 1e9;
                 }
             }
