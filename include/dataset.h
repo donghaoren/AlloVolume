@@ -8,7 +8,10 @@ namespace allovolume {
 
 struct BlockDescription {
     Vector min, max;
-    int xsize, ysize, zsize; // size in each axis.
+    // size in each axis.
+    // pixel at (x, y, z) = offset + x + y * xsize + z * xsize * ysize
+    int xsize, ysize, zsize;
+    int ghost_count;
     size_t offset;
 };
 
@@ -18,6 +21,9 @@ public:
     virtual size_t getDataSize() = 0;
     virtual int getBlockCount() = 0;
     virtual BlockDescription* getBlockDescription(int index) = 0;
+
+    static void WriteToFile(VolumeBlocks* dataset, const char* path);
+    static VolumeBlocks* LoadFromFile(const char* path);
 
     virtual ~VolumeBlocks() { }
 };

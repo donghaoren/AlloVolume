@@ -14,36 +14,52 @@ TransferFunction* tf;
 VolumeRenderer* renderer;
 Vector lens_origin;
 
+float theta = 0;
+float phi = 0;
+
 int block_index = 0;
 
 void controls(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     if(action == GLFW_PRESS || action == GLFW_REPEAT) {
-        if(key == GLFW_KEY_ESCAPE)
+        if(key == GLFW_KEY_ESCAPE) {
             glfwSetWindowShouldClose(window, GL_TRUE);
+        }
         if(key == GLFW_KEY_W) {
-            lens_origin.x += 1.01e9;
-            lens->setParameter("origin", &lens_origin);
-            renderer->render();
-            img->setNeedsDownload();
+            phi += 0.1;
+            if(lens) {
+                lens_origin.x += 1.01e9;
+                lens->setParameter("origin", &lens_origin);
+                renderer->render();
+                img->setNeedsDownload();
+            }
         }
         if(key == GLFW_KEY_S) {
-            lens_origin.x -= 1.01e9;
-            lens->setParameter("origin", &lens_origin);
-            renderer->render();
-            img->setNeedsDownload();
+            phi -= 0.1;
+            if(lens) {
+                lens_origin.x -= 1.01e9;
+                lens->setParameter("origin", &lens_origin);
+                renderer->render();
+                img->setNeedsDownload();
+            }
         }
         if(key == GLFW_KEY_A) {
-            lens_origin.y += 1.01e9;
-            lens->setParameter("origin", &lens_origin);
-            renderer->render();
-            img->setNeedsDownload();
+            theta += 0.1;
+            if(lens) {
+                lens_origin.y += 1.01e9;
+                lens->setParameter("origin", &lens_origin);
+                renderer->render();
+                img->setNeedsDownload();
+            }
         }
         if(key == GLFW_KEY_D) {
-            lens_origin.y -= 1.01e9;
-            lens->setParameter("origin", &lens_origin);
-            renderer->render();
-            img->setNeedsDownload();
+            theta -= 0.1;
+            if(lens) {
+                lens_origin.y -= 1.01e9;
+                lens->setParameter("origin", &lens_origin);
+                renderer->render();
+                img->setNeedsDownload();
+            }
         }
         if(key == GLFW_KEY_Z) {
             block_index += 1;
@@ -86,9 +102,9 @@ GLFWwindow* initWindow(const int resX, const int resY)
 
 float alpha = 0;
 
-void drawCube(Vector min, Vector max)
+void drawCube(Vector min, Vector max, float r = 1, float g = 1, float b = 1, float a = 1)
 {
-    Vector df = Vector(1,1,1);
+    Vector df = max - min;
     min += df * 0.05;
     max -= df * 0.05;
     GLfloat vertices[] =
@@ -106,15 +122,14 @@ void drawCube(Vector min, Vector max)
         p[1] = p[1] < 0 ? min.y : max.y;
         p[2] = p[2] < 0 ? min.z : max.z;
     }
-    float a = 0.5;
     GLfloat colors[] =
     {
-        1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,
-        1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,
-        1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,
-        1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,
-        1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,
-        1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a,  1, 1, 1, a
+        r, g, b, a,  r, g, b, a,  r, g, b, a,  r, g, b, a,
+        r, g, b, a,  r, g, b, a,  r, g, b, a,  r, g, b, a,
+        r, g, b, a,  r, g, b, a,  r, g, b, a,  r, g, b, a,
+        r, g, b, a,  r, g, b, a,  r, g, b, a,  r, g, b, a,
+        r, g, b, a,  r, g, b, a,  r, g, b, a,  r, g, b, a,
+        r, g, b, a,  r, g, b, a,  r, g, b, a,  r, g, b, a
     };
 
     //attempt to rotate cube
@@ -141,31 +156,53 @@ void display( GLFWwindow* window )
     {
         // Scale to window size
         GLint windowWidth, windowHeight;
-        glfwGetWindowSize(window, &windowWidth, &windowHeight);
+        glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
         glViewport(0, 0, windowWidth, windowHeight);
 
         // Draw stuff
         glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // glMatrixMode(GL_PROJECTION_MATRIX);
-        // glLoadIdentity();
-        // gluPerspective(60, (double)windowWidth / (double)windowHeight, 0.1, 100 );
+        glMatrixMode(GL_PROJECTION_MATRIX);
+        glLoadIdentity();
+        gluPerspective(60, (double)windowWidth / (double)windowHeight, 0.1, 100 );
 
-        // glMatrixMode(GL_MODELVIEW_MATRIX);
-        // gluLookAt(5, 4, 3, 0, 0, 0, 0, 0, 1);
-        // glRotatef(alpha, 0, 1, 0);
+        glMatrixMode(GL_MODELVIEW_MATRIX);
+        gluLookAt(5 * cos(theta) * cos(phi), 5 * sin(theta) * cos(phi), sin(phi) * 5, 0, 0, 0, 0, 0, 1);
 
         // for(int i = 0; i < volume->getBlockCount(); i++) {
         //     if(i != block_index) continue;
         //     BlockDescription* desc = volume->getBlockDescription(i);
+        //     for(int k = 0; k < 6; k++) {
+        //         if(desc->neighbors[k] >= 0) {
+        //             BlockDescription* desc2 = volume->getBlockDescription(desc->neighbors[k]);
+        //             drawCube(desc2->min / 1e10, desc2->max / 1e10, 0, 1, 0, 0.5);
+        //         }
+        //     }
+        //     if(desc->parent >= 0) {
+        //         BlockDescription* desc2 = volume->getBlockDescription(desc->parent);
+        //         drawCube(desc2->min / 1e10, desc2->max / 1e10, 1, 0, 0, 0.5);
+        //     }
         //     drawCube(desc->min / 1e10, desc->max / 1e10);
         // }
+        // for(int i = 0; i < volume->getBlockCount(); i++) {
+        //     BlockDescription* desc = volume->getBlockDescription(i);
+        //     drawCube(desc->min / 1e10, desc->max / 1e10, 1, 1, 1, 0.1);
+        // }
+
+        glBegin(GL_LINES);
+        glColor3f(0, 0, 0); glVertex3f(0, 0, 0);
+        glColor3f(1, 0, 0); glVertex3f(1, 0, 0);
+        glColor3f(0, 0, 0); glVertex3f(0, 0, 0);
+        glColor3f(0, 1, 0); glVertex3f(0, 1, 0);
+        glColor3f(0, 0, 0); glVertex3f(0, 0, 0);
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 1);
+        glEnd();
 
 
-        glRasterPos3f(-1, -1, 0);
-        glDrawPixels(img->getWidth(), img->getHeight(),
-            GL_RGBA, GL_FLOAT, img->getPixels());
+        // glRasterPos3f(-1, -1, 0);
+        // glDrawPixels(img->getWidth(), img->getHeight(),
+        //     GL_RGBA, GL_FLOAT, img->getPixels());
 
 
         // Update Screen
@@ -197,7 +234,7 @@ double getPreciseTime() {
 }
 #endif
 
-int main(int argc, char** argv)
+void render_one_frame_as_png()
 {
     volume = Dataset_FLASH_Create("super3d_hdf5_plt_cnt_0122", "/dens");
     tf = TransferFunction::CreateTest();
@@ -205,7 +242,7 @@ int main(int argc, char** argv)
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
     lens_origin = Vector(-2e7, 1e7, 0.1e10);
     lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
-    img = Image::Create(2000, 1000);
+    img = Image::Create(800, 400);
     renderer = VolumeRenderer::CreateGPU();
     renderer->setVolume(volume);
     renderer->setLens(lens);
@@ -215,21 +252,38 @@ int main(int argc, char** argv)
     renderer->render();
     img->setNeedsDownload();
 
-    double t0 = getPreciseTime();
-    renderer->render();
-    double render_time = getPreciseTime() - t0;
-    printf("Render time:  %.2lf ms\n", render_time * 1000.0);
+    for(int i = 0; i < 1; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double render_time = getPreciseTime() - t0;
+        printf("Render time:  %.2lf ms\n", render_time * 1000.0);
+    }
 
     img->save("output.png", "png16");
 
-    // GLFWwindow* window = initWindow(800, 400);
-    // if( NULL != window )
-    // {
-    //     display( window );
-    // }
-    // glfwDestroyWindow(window);
-    // glfwTerminate();
-    return 0;
+}
+
+void render_blocks() {
+    GLFWwindow* window = initWindow(800, 400);
+    if( NULL != window )
+    {
+        display( window );
+    }
+    glfwDestroyWindow(window);
+    glfwTerminate();
+}
+
+void convert_format() {
+    volume = Dataset_FLASH_Create("super3d_hdf5_plt_cnt_0122", "/dens");
+    VolumeBlocks::WriteToFile(volume, "super3d_hdf5_plt_cnt_0122.volume");
+    delete volume;
+}
+
+int main() {
+    convert_format();
+    volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
+    render_one_frame_as_png();
+    //render_blocks();
 }
 
 // int main() {

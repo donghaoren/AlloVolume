@@ -28,6 +28,7 @@ INCLUDE_DIRECTORIES (
 )
 
 ADD_LIBRARY ( dataset
+    src/dataset.cpp
     src/dataset_flash.cpp
 )
 

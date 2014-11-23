@@ -1,21 +1,35 @@
 #include "renderer.h"
 #include <math.h>
 #include <algorithm>
-
-#define CUDA_MAX_THREADS 128
-
+#include <typeinfo>
+#include <cxxabi.h>
+#include <float.h>
 //#define CPU_EMULATE
 
 using namespace std;
+
+#define CUDA_DEFAULT_THREADS 64
 
 namespace allovolume {
 
 #ifndef CPU_EMULATE
 
+char* demangle_raw(const char* mangled) {
+    int status;
+    char* result = abi::__cxa_demangle(mangled, 0, 0, &status);
+    return result;
+}
+
 template<typename T>
 T* cudaAllocate(size_t size) {
-    T* result;
-    cudaMalloc((void**)&result, sizeof(T) * size);
+    T* result = 0;
+    cudaError_t err = cudaMalloc((void**)&result, sizeof(T) * size);
+    if(!result) {
+        printf("cudaAllocate: cudaMalloc() of %llu of %s (%.2f MB): %s\n",
+            size, demangle_raw(typeid(T).name()), sizeof(T) * size / 1048576.0,
+            cudaGetErrorString(err));
+        throw 0;
+    }
     return result;
 }
 
@@ -26,12 +40,20 @@ void cudaDeallocate(T* pointer) {
 
 template<typename T>
 void cudaUpload(T* dest, T* src, size_t count) {
-    cudaMemcpy(dest, src, sizeof(T) * count, cudaMemcpyHostToDevice);
+    cudaError_t err = cudaMemcpy(dest, src, sizeof(T) * count, cudaMemcpyHostToDevice);
+    if(err != cudaSuccess) {
+        printf("cudaUpload: cudaMemcpy(): %s\n", cudaGetErrorString(err));
+        throw 0;
+    }
 }
 
 template<typename T>
 void cudaDownload(T* dest, T* src, size_t count) {
-    cudaMemcpy(dest, src, sizeof(T) * count, cudaMemcpyDeviceToHost);
+    cudaError_t err = cudaMemcpy(dest, src, sizeof(T) * count, cudaMemcpyDeviceToHost);
+    if(err != cudaSuccess) {
+        printf("cudaUpload: cudaMemcpy(): %s\n", cudaGetErrorString(err));
+        throw 0;
+    }
 }
 
 #define CUDA_KERNEL __global__
@@ -176,14 +198,14 @@ public:
         Vector ey = ex.cross(up).normalize();
         Vector ez = ey.cross(ex).normalize();
         int pixel_count = width * height;
-        int cuda_blocks = pixel_count / CUDA_MAX_THREADS;
-        if(pixel_count % CUDA_MAX_THREADS != 0) cuda_blocks += 1;
+        int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
+        if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
     #ifndef CPU_EMULATE
-        get_rays_kernel<<<cuda_blocks, CUDA_MAX_THREADS>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
+        get_rays_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
     #else
-        blockDim.x = CUDA_MAX_THREADS;
+        blockDim.x = CUDA_DEFAULT_THREADS;
         for(int i = 0; i < cuda_blocks; i++) {
-            for(int j = 0; j < CUDA_MAX_THREADS; j++) {
+            for(int j = 0; j < CUDA_DEFAULT_THREADS; j++) {
                 blockIdx.x = i;
                 threadIdx.x = j;
                 get_rays_kernel(ex, ey, ez, origin, width, height, pixel_count, rays);
@@ -337,6 +359,12 @@ struct MirroredMemory {
     }
 };
 
+#define BLOCK_COUNTER_MAX 62
+struct block_counter_t {
+    int count;
+    short blocks[32];
+};
+
 struct ray_marching_parameters_t {
     Lens::Ray* rays;
     Color* pixels;
@@ -349,6 +377,7 @@ struct ray_marching_parameters_t {
     int pixel_count;
     int block_count;
     float step_size;
+    block_counter_t* block_counters;
 };
 
 inline CUDA_DEVICE float fminf(float a, float b) { return min(a, b); }
@@ -435,32 +464,32 @@ inline CUDA_DEVICE float intersect_bbox(Vector p, Vector direction, Vector bmin,
 // }
 
 
-inline CUDA_DEVICE float access_volume(float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
+inline CUDA_DEVICE float access_volume(float* data, int xsize, int ysize, int zsize, int ghost_count, int ix, int iy, int iz) {
     //return data[ix * ysize * zsize + iy * zsize + iz];
     return data[iz * xsize * ysize + iy * xsize + ix];
 }
 
 
-CUDA_DEVICE float block_interploate(Vector pos, Vector min, Vector max, float* data, int xsize, int ysize, int zsize) {
+CUDA_DEVICE float block_interploate(Vector pos, Vector min, Vector max, float* data, int xsize, int ysize, int zsize, int ghost_count) {
     // [ 0 | 1 | 2 | 3 ]
     Vector p(
-        (pos.x - min.x) / (max.x - min.x) * xsize - 0.5f,
-        (pos.y - min.y) / (max.y - min.y) * ysize - 0.5f,
-        (pos.z - min.z) / (max.z - min.z) * zsize - 0.5f
+        (pos.x - min.x) / (max.x - min.x) * (xsize - ghost_count * 2) - 0.5f + ghost_count,
+        (pos.y - min.y) / (max.y - min.y) * (ysize - ghost_count * 2) - 0.5f + ghost_count,
+        (pos.z - min.z) / (max.z - min.z) * (zsize - ghost_count * 2) - 0.5f + ghost_count
     );
     int ix = p.x, iy = p.y, iz = p.z;
     ix = clamp(ix, 0, xsize - 2);
     iy = clamp(iy, 0, ysize - 2);
     iz = clamp(iz, 0, zsize - 2);
     float tx = p.x - ix, ty = p.y - iy, tz = p.z - iz;
-    float t000 = access_volume(data, xsize, ysize, zsize, ix, iy, iz);
-    float t001 = access_volume(data, xsize, ysize, zsize, ix, iy, iz + 1);
-    float t010 = access_volume(data, xsize, ysize, zsize, ix, iy + 1, iz);
-    float t011 = access_volume(data, xsize, ysize, zsize, ix, iy + 1, iz + 1);
-    float t100 = access_volume(data, xsize, ysize, zsize, ix + 1, iy, iz);
-    float t101 = access_volume(data, xsize, ysize, zsize, ix + 1, iy, iz + 1);
-    float t110 = access_volume(data, xsize, ysize, zsize, ix + 1, iy + 1, iz);
-    float t111 = access_volume(data, xsize, ysize, zsize, ix + 1, iy + 1, iz + 1);
+    float t000 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy, iz);
+    float t001 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy, iz + 1);
+    float t010 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy + 1, iz);
+    float t011 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy + 1, iz + 1);
+    float t100 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy, iz);
+    float t101 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy, iz + 1);
+    float t110 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy + 1, iz);
+    float t111 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy + 1, iz + 1);
     float t00 = t000 * (1.0f - tz) + t001 * tz;
     float t01 = t010 * (1.0f - tz) + t011 * tz;
     float t10 = t100 * (1.0f - tz) + t101 * tz;
@@ -471,7 +500,40 @@ CUDA_DEVICE float block_interploate(Vector pos, Vector min, Vector max, float* d
     return t;
 }
 
-CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
+CUDA_KERNEL void ray_block_test_kernel(ray_marching_parameters_t p) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx >= p.pixel_count) return;
+    Lens::Ray ray = p.rays[idx];
+    Vector pos = ray.origin;
+    Vector d = ray.direction;
+    int block_cursor = 0;
+    Color color(0, 0, 0, 0);
+    // Simple solution: fixed step size.
+    float kmax = 1e40;
+    block_counter_t bc;
+    bc.count = 0;
+    while(block_cursor < p.block_count) {
+        BlockDescription block = p.blocks[block_cursor];
+        float kin, kout;
+        if(intersectBox(pos, d, block.min, block.max, &kin, &kout) && kout >= 0) {
+            if(kin < 0) kin = 0;
+            if(kout > kmax) kout = kmax;
+            if(kin < kout) {
+                if(bc.count + 1 < BLOCK_COUNTER_MAX) {
+                    bc.blocks[bc.count] = block_cursor;
+                    bc.count += 1;
+                } else {
+                    bc.count += 1;
+                }
+            }
+        }
+        block_cursor += 1;
+    }
+    p.block_counters[idx] = bc;
+}
+
+CUDA_KERNEL
+void ray_marching_kernel(ray_marching_parameters_t p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     // {
     //     int x = abs(idx % 1600 - 784);
@@ -489,18 +551,18 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
     int block_cursor = 0;
     Color color(0, 0, 0, 0);
     // Simple solution: fixed step size.
-    float kmax = 1e40;
-    while(block_cursor < p.block_count) {
+    float kmax = FLT_MAX;
+    for(int block_cursor = 0; block_cursor < p.block_count; block_cursor++) {
         BlockDescription block = p.blocks[block_cursor];
         float kin, kout;
-        if(intersectBox(pos, d, block.min, block.max, &kin, &kout) && kout >= 0) {
+        if(intersectBox(pos, d, block.min, block.max, &kin, &kout)) {
             if(kin < 0) kin = 0;
             if(kout > kmax) kout = kmax;
             if(kin < kout) {
                 // Render this block.
                 float distance = kout - kin;
                 float voxel_size = (block.max.x - block.min.x) / block.xsize;
-                int steps = ceil(distance / voxel_size * 3);
+                int steps = ceil(distance / voxel_size);
                 float step_size = distance / steps;
 
                 for(int i = steps - 1; i >= 0; i--) {
@@ -512,7 +574,7 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
                     // float v = value;
                     // Color c = tf_interpolate(p.tf, -1, 1, p.tf_size, v);
 
-                    float value = block_interploate(pt, block.min, block.max, p.data + block.offset, block.xsize, block.ysize, block.zsize);
+                    float value = block_interploate(pt, block.min, block.max, p.data + block.offset, block.xsize, block.ysize, block.zsize, block.ghost_count);
                     float v;
                     if(p.tf_is_log) {
                         if(value < 0) value = 0;
@@ -521,20 +583,12 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
                         v = value;
                     }
                     Color c = tf_interpolate(p.tf, p.tf_min, p.tf_max, p.tf_size, v);
-
-                    // float v = sin(pt.x / 4e8) + sin(pt.y / 4e8) + sin(pt.z / 4e8);
-                    // Color c = tf_interpolate(p.tf, -3, 3, p.tf_size, v);
-                    // pt /= 1e9;
-                    // float v = sin(pt.x / 4) + sin(pt.y / 4) + sin(pt.z / 4);
-                    // v = v * v / 30;
-                    //printf("c = %f %f %f %f\n", c.r, c.g, c.b, c.a);
                     color = c.blendToDifferential(color, step_size / 1e9);
                     //color = color + c * step_size / 1e9;
                 }
+                kmax = kin;
             }
-            //kmax = kin;
         }
-        block_cursor += 1;
     }
     p.pixels[idx] = color;
 }
@@ -542,7 +596,13 @@ CUDA_KERNEL void ray_marching_kernel(ray_marching_parameters_t p) {
 class VolumeRendererImpl : public VolumeRenderer {
 public:
 
-    VolumeRendererImpl() : blocks(500), data(500 * 32 * 32 * 32), rays(1000 * 1000) {
+    VolumeRendererImpl() :
+        blocks(512),
+        volume_blocks(512),
+        data(512 * 32 * 32 * 32),
+        volume_data(512 * 34 * 34 * 34),
+        rays(1000 * 1000),
+        block_counters(1000 * 1000) {
     }
 
     struct BlockCompare {
@@ -561,9 +621,13 @@ public:
     virtual void setVolume(VolumeBlocks* volume_) {
         // Copy volume data.
         volume = volume_;
+        block_count = volume->getBlockCount();
         data.allocate(volume->getDataSize());
         data.upload(volume->getData());
-
+        blocks.allocate(block_count);
+        for(int i = 0; i < block_count; i++) {
+            blocks[i] = *volume->getBlockDescription(i);
+        }
     }
     virtual void setTransferFunction(TransferFunction* tf_) {
         tf = tf_;
@@ -575,12 +639,6 @@ public:
         image = image_;
     }
     virtual void render() {
-        // Prepare blocks.
-        int block_count = volume->getBlockCount();
-        blocks.allocate(block_count);
-        for(int i = 0; i < block_count; i++) {
-            blocks[i] = *volume->getBlockDescription(i);
-        }
         // Sort blocks.
         BlockCompare block_compare(lens->getCenter());
         sort(blocks.cpu, blocks.cpu + block_count, block_compare);
@@ -590,9 +648,10 @@ public:
         int pixel_count = image->getWidth() * image->getHeight();
         rays.allocate(pixel_count);
         lens->getRaysGPU(image->getWidth(), image->getHeight(), rays.gpu);
+        block_counters.allocate(pixel_count);
 
-        int cuda_blocks = pixel_count / CUDA_MAX_THREADS;
-        if(pixel_count % CUDA_MAX_THREADS != 0) cuda_blocks += 1;
+        int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
+        if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
         ray_marching_parameters_t pms;
         pms.rays = rays.gpu;
         pms.pixels = image->getPixelsGPU();
@@ -606,12 +665,23 @@ public:
         pms.tf_max = tf->getMetadata()->input_max;
         pms.tf_is_log = tf->getMetadata()->is_log_scale;
         pms.tf_size = tf->getMetadata()->size;
+        pms.block_counters = block_counters.gpu;
     #ifndef CPU_EMULATE
-        ray_marching_kernel<<<cuda_blocks, CUDA_MAX_THREADS>>>(pms);
+        // ray_block_test_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
+        // block_counters.download();
+        // int bc_distribution[32] = {0};
+        // for(int i = 0; i < pixel_count; i++) {
+        //     bc_distribution[block_counters[i].count] += 1;
+        // }
+        // for(int i = 0; i <32; i++) {
+        //     printf("%d: %d\n", i, bc_distribution[i]);
+        // }
+        ray_marching_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
+        cudaThreadSynchronize();
     #else
-        blockDim.x = CUDA_MAX_THREADS;
+        blockDim.x = CUDA_DEFAULT_THREADS;
         for(int i = 0; i < cuda_blocks; i++) {
-            for(int j = 0; j < CUDA_MAX_THREADS; j++) {
+            for(int j = 0; j < CUDA_DEFAULT_THREADS; j++) {
                 blockIdx.x = i;
                 threadIdx.x = j;
                 ray_marching_kernel(pms);
@@ -621,8 +691,10 @@ public:
     }
 
     MirroredMemory<BlockDescription> blocks;
-    MirroredMemory<float> data;
+    MirroredMemory<float> volume_data, volume_blocks, data;
     MirroredMemory<Lens::Ray> rays;
+    int block_count;
+    MirroredMemory<block_counter_t> block_counters;
     VolumeBlocks* volume;
     TransferFunction* tf;
     Lens* lens;
