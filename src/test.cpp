@@ -220,9 +220,7 @@ int main(int argc, char** argv)
     double render_time = getPreciseTime() - t0;
     printf("Render time:  %.2lf ms\n", render_time * 1000.0);
 
-    FILE* fout = fopen("render_result.raw16rgba", "wb");
-    fwrite(img->getPixels(), 1, sizeof(Color) * img->getWidth() * img->getHeight(), fout);
-    fclose(fout);
+    img->save("output.png", "png16");
 
     // GLFWwindow* window = initWindow(800, 400);
     // if( NULL != window )

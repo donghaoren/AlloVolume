@@ -14,6 +14,7 @@ public:
     virtual int getHeight() = 0;
     virtual void setNeedsUpload() = 0;
     virtual void setNeedsDownload() = 0;
+    virtual void save(const char* path, const char* format) = 0;
 
     virtual ~Image() { }
 
@@ -67,6 +68,8 @@ public:
 
     static VolumeRenderer* CreateGPU();
 };
+
+bool writeImageFile(const char* path, const char* format, int width, int height, Color* pixels);
 
 }
 

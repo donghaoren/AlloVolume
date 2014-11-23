@@ -31,6 +31,7 @@ ADD_LIBRARY ( dataset
 
 CUDA_ADD_LIBRARY ( renderer
     src/renderer_cuda.cu
+    src/image_codec.cpp
 )
 
 ADD_EXECUTABLE ( test

@@ -100,6 +100,11 @@ public:
         needs_download = true;
     }
 
+    virtual void save(const char* path, const char* format) {
+        Color* pixels = getPixels();
+        writeImageFile(path, format, width, height, pixels);
+    }
+
     virtual ~ImageImpl() {
         delete [] data_cpu;
         cudaDeallocate(data_gpu);
