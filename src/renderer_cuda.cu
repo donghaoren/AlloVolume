@@ -4,6 +4,7 @@
 #include <typeinfo>
 #include <cxxabi.h>
 #include <float.h>
+#include <stdio.h>
 //#define CPU_EMULATE
 
 using namespace std;
