@@ -2,7 +2,7 @@
 #include <math.h>
 #include <algorithm>
 
-#define CUDA_MAX_THREADS 1024
+#define CUDA_MAX_THREADS 128
 
 //#define CPU_EMULATE
 

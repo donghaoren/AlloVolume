@@ -205,7 +205,7 @@ int main(int argc, char** argv)
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
     lens_origin = Vector(-2e7, 1e7, 0.1e10);
     lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
-    img = Image::Create(1600, 800);
+    img = Image::Create(2000, 1000);
     renderer = VolumeRenderer::CreateGPU();
     renderer->setVolume(volume);
     renderer->setLens(lens);
