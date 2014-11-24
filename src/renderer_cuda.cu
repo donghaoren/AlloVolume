@@ -286,10 +286,6 @@ public:
             blendGaussian(t * (max - min) + min, (max - min) / ticks / 3.0f, c);
         }
 
-        // for(int i = 0; i < metadata.size; i++) {
-        //     printf("%f %f %f %f\n",content_cpu[i].r, content_cpu[i].g, content_cpu[i].b, content_cpu[i].a);
-        // }
-
         cudaUpload<Color>(content_gpu, content_cpu, metadata.size);
     }
 
@@ -390,12 +386,12 @@ struct transfer_function_t {
 };
 
 struct ray_marching_parameters_t {
-    Lens::Ray* rays;
+    const Lens::Ray* rays;
     Color* pixels;
     transfer_function_t tf;
 
-    BlockDescription* blocks;
-    float* data;
+    const BlockDescription* blocks;
+    const float* data;
     int pixel_count;
     int block_count, block_min, block_max;
     float blend_coefficient;
@@ -457,12 +453,12 @@ int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, 
     return tmax > tmin;
 }
 
-inline CUDA_DEVICE float access_volume(float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
+inline CUDA_DEVICE float access_volume(const float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
     //return data[ix * ysize * zsize + iy * zsize + iz];
     return data[iz * xsize * ysize + iy * xsize + ix];
 }
 
-CUDA_DEVICE float block_interploate(Vector pos, BlockDescription& B, float* data) {
+CUDA_DEVICE float block_interploate(Vector pos, const BlockDescription& B, const float* data) {
     // [ 0 | 1 | 2 | 3 ]
     Vector p(
         (pos.x - B.min.x) / (B.max.x - B.min.x) * (B.xsize - B.ghost_count * 2) - 0.5f + B.ghost_count,
@@ -528,7 +524,7 @@ CUDA_KERNEL
 void ray_marching_kernel(ray_marching_parameters_t p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= p.pixel_count) return;
-    //if(idx != 199 * 800 + 400) return;
+
     Lens::Ray ray = p.rays[idx];
     Vector pos = ray.origin;
     Vector d = ray.direction;

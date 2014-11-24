@@ -258,7 +258,7 @@ void render_one_frame_as_png()
     renderer->setTransferFunction(tf);
     renderer->setImage(img);
 
-    for(int i = 0; i < 1; i++) {
+    for(int i = 0; i < 5; i++) {
         double t0 = getPreciseTime();
         renderer->render();
         double render_time = getPreciseTime() - t0;
