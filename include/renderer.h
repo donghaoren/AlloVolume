@@ -25,6 +25,7 @@ class TransferFunction {
 public:
     struct Metadata {
         float input_min, input_max;
+        float blend_coefficient;
         int size;
         bool is_log_scale;
     };
@@ -37,7 +38,7 @@ public:
 
     virtual ~TransferFunction() { }
 
-    static TransferFunction* CreateTest();
+    static TransferFunction* CreateTest(float min, float max, int ticks, bool is_log);
 };
 
 class Lens {

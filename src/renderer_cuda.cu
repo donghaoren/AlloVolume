@@ -5,6 +5,7 @@
 #include <cxxabi.h>
 #include <float.h>
 #include <stdio.h>
+
 //#define CPU_EMULATE
 
 using namespace std;
@@ -261,23 +262,33 @@ CUDA_DEVICE __host__ Color tf_interpolate(Color* tf, float tf_min, float tf_max,
 class TransferFunctionImpl : public TransferFunction {
 public:
 
-    TransferFunctionImpl() {
+    TransferFunctionImpl(float min, float max, int ticks, bool is_log) {
         metadata.size = 1600;
-        metadata.input_min = 0;
-        metadata.input_max = 20;
-        metadata.is_log_scale = true;
+        if(is_log) {
+            min = log(min);
+            max = log(max);
+        }
+        metadata.input_min = min;
+        metadata.input_max = max;
+        metadata.is_log_scale = is_log;
         content_cpu = new Color[metadata.size];
         content_gpu = cudaAllocate<Color>(metadata.size);
+
         for(int i = 0; i < metadata.size; i++) {
             content_cpu[i] = Color(0, 0, 0, 0);
         }
-        for(float i = 0; i <= metadata.input_max; i+=1) {
+
+        for(float i = 0; i < ticks; i++) {
             //if(i != round(log(pow(10.0, 3.0)))) continue;
-            float t = (float)i / metadata.input_max;
+            float t = (float)i / ((float)ticks - 1);
             Color c = tf_interpolate(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
             c.a = pow(t, 0.5f);
-            blendGaussian(i, 0.2, c);
+            blendGaussian(t * (max - min) + min, (max - min) / ticks / 3.0f, c);
         }
+
+        // for(int i = 0; i < metadata.size; i++) {
+        //     printf("%f %f %f %f\n",content_cpu[i].r, content_cpu[i].g, content_cpu[i].b, content_cpu[i].a);
+        // }
 
         cudaUpload<Color>(content_gpu, content_cpu, metadata.size);
     }
@@ -315,8 +326,8 @@ public:
     Color* content_gpu;
 };
 
-TransferFunction* TransferFunction::CreateTest() {
-    return new TransferFunctionImpl();
+TransferFunction* TransferFunction::CreateTest(float min, float max, int ticks, bool is_log) {
+    return new TransferFunctionImpl(min, max, ticks, is_log);
 }
 
 template<typename T>
@@ -366,18 +377,28 @@ struct block_counter_t {
     short blocks[32];
 };
 
+struct transfer_function_t {
+    Color* data;
+    int size;
+    float min, max;
+    bool is_log;
+
+    inline CUDA_DEVICE Color get(float t) {
+        if(is_log) t = log(t);
+        return tf_interpolate(data, min, max, size, t);
+    }
+};
+
 struct ray_marching_parameters_t {
     Lens::Ray* rays;
     Color* pixels;
-    Color* tf;
-    float tf_min, tf_max;
-    bool tf_is_log;
-    int tf_size;
+    transfer_function_t tf;
+
     BlockDescription* blocks;
     float* data;
     int pixel_count;
     int block_count;
-    float step_size;
+    float blend_coefficient;
     block_counter_t* block_counters;
 };
 
@@ -471,26 +492,26 @@ inline CUDA_DEVICE float access_volume(float* data, int xsize, int ysize, int zs
 }
 
 
-CUDA_DEVICE float block_interploate(Vector pos, Vector min, Vector max, float* data, int xsize, int ysize, int zsize, int ghost_count) {
+CUDA_DEVICE float block_interploate(Vector pos, BlockDescription& B, float* data) {
     // [ 0 | 1 | 2 | 3 ]
     Vector p(
-        (pos.x - min.x) / (max.x - min.x) * (xsize - ghost_count * 2) - 0.5f + ghost_count,
-        (pos.y - min.y) / (max.y - min.y) * (ysize - ghost_count * 2) - 0.5f + ghost_count,
-        (pos.z - min.z) / (max.z - min.z) * (zsize - ghost_count * 2) - 0.5f + ghost_count
+        (pos.x - B.min.x) / (B.max.x - B.min.x) * (B.xsize - B.ghost_count * 2) - 0.5f + B.ghost_count,
+        (pos.y - B.min.y) / (B.max.y - B.min.y) * (B.ysize - B.ghost_count * 2) - 0.5f + B.ghost_count,
+        (pos.z - B.min.z) / (B.max.z - B.min.z) * (B.zsize - B.ghost_count * 2) - 0.5f + B.ghost_count
     );
     int ix = p.x, iy = p.y, iz = p.z;
-    ix = clamp(ix, 0, xsize - 2);
-    iy = clamp(iy, 0, ysize - 2);
-    iz = clamp(iz, 0, zsize - 2);
+    ix = clamp(ix, 0, B.xsize - 2);
+    iy = clamp(iy, 0, B.ysize - 2);
+    iz = clamp(iz, 0, B.zsize - 2);
     float tx = p.x - ix, ty = p.y - iy, tz = p.z - iz;
-    float t000 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy, iz);
-    float t001 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy, iz + 1);
-    float t010 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy + 1, iz);
-    float t011 = access_volume(data, xsize, ysize, zsize, ghost_count, ix, iy + 1, iz + 1);
-    float t100 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy, iz);
-    float t101 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy, iz + 1);
-    float t110 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy + 1, iz);
-    float t111 = access_volume(data, xsize, ysize, zsize, ghost_count, ix + 1, iy + 1, iz + 1);
+    float t000 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy, iz);
+    float t001 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy, iz + 1);
+    float t010 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy + 1, iz);
+    float t011 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy + 1, iz + 1);
+    float t100 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy, iz);
+    float t101 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy, iz + 1);
+    float t110 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy + 1, iz);
+    float t111 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy + 1, iz + 1);
     float t00 = t000 * (1.0f - tz) + t001 * tz;
     float t01 = t010 * (1.0f - tz) + t011 * tz;
     float t10 = t100 * (1.0f - tz) + t101 * tz;
@@ -553,6 +574,7 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
     Color color(0, 0, 0, 0);
     // Simple solution: fixed step size.
     float kmax = FLT_MAX;
+    float L = p.blend_coefficient;
     for(int block_cursor = 0; block_cursor < p.block_count; block_cursor++) {
         BlockDescription block = p.blocks[block_cursor];
         float kin, kout;
@@ -562,30 +584,23 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
             if(kin < kout) {
                 // Render this block.
                 float distance = kout - kin;
-                float voxel_size = (block.max.x - block.min.x) / block.xsize;
+                float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
                 int steps = ceil(distance / voxel_size);
                 float step_size = distance / steps;
 
+                Color c0 = p.tf.get(block_interploate(pos + d * kout, block, p.data + block.offset));
                 for(int i = steps - 1; i >= 0; i--) {
-                    float k = kin + step_size * ((float)i + 0.5f);
-                    Vector pt = pos + d * k;
-
-                    // pt /= 5e10;
-                    // float value = (sin(pt.x) + sin(pt.y) + sin(pt.z)) / 3;
-                    // float v = value;
-                    // Color c = tf_interpolate(p.tf, -1, 1, p.tf_size, v);
-
-                    float value = block_interploate(pt, block.min, block.max, p.data + block.offset, block.xsize, block.ysize, block.zsize, block.ghost_count);
-                    float v;
-                    if(p.tf_is_log) {
-                        if(value < 0) value = 0;
-                        v = log(1 + value);
-                    } else {
-                        v = value;
-                    }
-                    Color c = tf_interpolate(p.tf, p.tf_min, p.tf_max, p.tf_size, v);
-                    color = c.blendToDifferential(color, step_size / 1e9);
-                    //color = color + c * step_size / 1e9;
+                    Color cm = p.tf.get(block_interploate(pos + d * (kin + step_size * (i - 0.5f)), block, p.data + block.offset));
+                    Color c1 = p.tf.get(block_interploate(pos + d * (kin + step_size * i), block, p.data + block.offset));
+                    // Runge Kutta Order 4 method.
+                    // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
+                    Color k1 = (color - c0) * log(1.0f - c0.a) / L;
+                    float log1mcma = log(1.0f - cm.a);
+                    Color k2 = (color + k1 * (step_size * 0.5f) - cm) * log1mcma / L;
+                    Color k3 = (color + k2 * (step_size * 0.5f) - cm) * log1mcma / L;
+                    Color k4 = (color + k3 * (step_size) - c1) * log(1.0f - c1.a) / L;
+                    color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
+                    c0 = c1;
                 }
                 kmax = kin;
             }
@@ -611,8 +626,8 @@ public:
             center = center_;
         }
         bool operator () (const BlockDescription& a, const BlockDescription& b) {
-            float d1 = ((a.min + a.max) / 2.0f - center).len2();
-            float d2 = ((b.min + b.max) / 2.0f - center).len2();
+            double d1 = ((a.min + a.max) / 2.0f - center).len2_double();
+            double d2 = ((b.min + b.max) / 2.0f - center).len2_double();
             return d1 > d2;
         }
 
@@ -660,12 +675,12 @@ public:
         pms.data = data.gpu;
         pms.pixel_count = pixel_count;
         pms.block_count = block_count;
-        pms.step_size = 0.01;
-        pms.tf = tf->getContentGPU();
-        pms.tf_min = tf->getMetadata()->input_min;
-        pms.tf_max = tf->getMetadata()->input_max;
-        pms.tf_is_log = tf->getMetadata()->is_log_scale;
-        pms.tf_size = tf->getMetadata()->size;
+        pms.tf.data = tf->getContentGPU();
+        pms.tf.min = tf->getMetadata()->input_min;
+        pms.tf.max = tf->getMetadata()->input_max;
+        pms.tf.is_log = tf->getMetadata()->is_log_scale;
+        pms.tf.size = tf->getMetadata()->size;
+        pms.blend_coefficient = tf->getMetadata()->blend_coefficient;
         pms.block_counters = block_counters.gpu;
     #ifndef CPU_EMULATE
         // ray_block_test_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);

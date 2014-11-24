@@ -18,6 +18,7 @@ float theta = 0;
 float phi = 0;
 
 int block_index = 0;
+int neighbor_index = 0;
 
 void controls(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
@@ -63,6 +64,11 @@ void controls(GLFWwindow* window, int key, int scancode, int action, int mods)
         }
         if(key == GLFW_KEY_Z) {
             block_index += 1;
+        }
+        if(key == GLFW_KEY_X) {
+            neighbor_index += 1;
+            neighbor_index = neighbor_index % 6;
+            printf("showing neighbor: %d\n", neighbor_index);
         }
     }
 }
@@ -169,26 +175,28 @@ void display( GLFWwindow* window )
 
         glMatrixMode(GL_MODELVIEW_MATRIX);
         gluLookAt(5 * cos(theta) * cos(phi), 5 * sin(theta) * cos(phi), sin(phi) * 5, 0, 0, 0, 0, 0, 1);
-
-        // for(int i = 0; i < volume->getBlockCount(); i++) {
-        //     if(i != block_index) continue;
-        //     BlockDescription* desc = volume->getBlockDescription(i);
-        //     for(int k = 0; k < 6; k++) {
-        //         if(desc->neighbors[k] >= 0) {
-        //             BlockDescription* desc2 = volume->getBlockDescription(desc->neighbors[k]);
-        //             drawCube(desc2->min / 1e10, desc2->max / 1e10, 0, 1, 0, 0.5);
-        //         }
-        //     }
-        //     if(desc->parent >= 0) {
-        //         BlockDescription* desc2 = volume->getBlockDescription(desc->parent);
-        //         drawCube(desc2->min / 1e10, desc2->max / 1e10, 1, 0, 0, 0.5);
-        //     }
-        //     drawCube(desc->min / 1e10, desc->max / 1e10);
-        // }
-        // for(int i = 0; i < volume->getBlockCount(); i++) {
-        //     BlockDescription* desc = volume->getBlockDescription(i);
-        //     drawCube(desc->min / 1e10, desc->max / 1e10, 1, 1, 1, 0.1);
-        // }
+        float scale = 5e19;
+        for(int i = 0; i < volume->getBlockCount(); i++) {
+            if(i != block_index) continue;
+            BlockDescription* desc = volume->getBlockDescription(i);
+            BlockTreeInfo* tinfo = volume->getBlockTreeInfo(i);
+            for(int k = 0; k < 6; k++) {
+                if(k != neighbor_index) continue;
+                if(tinfo->neighbors[k] >= 0) {
+                    BlockDescription* desc2 = volume->getBlockDescription(tinfo->neighbors[k]);
+                    drawCube(desc2->min / scale, desc2->max / scale, 0, 1, 0, 0.5);
+                }
+            }
+            if(tinfo->parent >= 0) {
+                BlockDescription* desc2 = volume->getBlockDescription(tinfo->parent);
+                drawCube(desc2->min / scale, desc2->max / scale, 1, 0, 0, 0.5);
+            }
+            drawCube(desc->min / scale, desc->max / scale);
+        }
+        for(int i = 0; i < volume->getBlockCount(); i++) {
+            BlockDescription* desc = volume->getBlockDescription(i);
+            drawCube(desc->min / scale, desc->max / scale, 1, 1, 1, 0.1);
+        }
 
         glBegin(GL_LINES);
         glColor3f(0, 0, 0); glVertex3f(0, 0, 0);
@@ -237,7 +245,8 @@ double getPreciseTime() {
 void render_one_frame_as_png()
 {
     volume = Dataset_FLASH_Create("super3d_hdf5_plt_cnt_0122", "/dens");
-    tf = TransferFunction::CreateTest();
+    tf = TransferFunction::CreateTest(1e-3, 1e8, 20, true);
+    tf->getMetadata()->blend_coefficient = 3e9;
     // lens_origin = Vector(-0.1e10, 1e8, -1e8);
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
     lens_origin = Vector(-2e7, 1e7, 0.1e10);
@@ -260,10 +269,41 @@ void render_one_frame_as_png()
     }
 
     img->save("output.png", "png16");
+}
 
+void render_one_frame_as_png2()
+{
+    volume = Dataset_FLASH_Create("snshock_3d_hdf5_chk_0266", "/dens");
+    tf = TransferFunction::CreateTest(1e-26, 1e-21, 3, true);
+    tf->getMetadata()->blend_coefficient = 3e19;
+    // lens_origin = Vector(-0.1e10, 1e8, -1e8);
+    // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
+    lens_origin = Vector(1.3e18, 1e16, 6e19);
+    lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
+    img = Image::Create(800, 400);
+    renderer = VolumeRenderer::CreateGPU();
+    renderer->setVolume(volume);
+    renderer->setLens(lens);
+    renderer->setTransferFunction(tf);
+    renderer->setImage(img);
+
+    renderer->render();
+    img->setNeedsDownload();
+    printf("%f %f %f %f\n", img->getPixels()->r, img->getPixels()->g, img->getPixels()->b, img->getPixels()->a);
+
+    for(int i = 0; i < 2; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double render_time = getPreciseTime() - t0;
+        printf("Render time:  %.2lf ms\n", render_time * 1000.0);
+    }
+
+    img->save("output3.png", "png16");
 }
 
 void render_blocks() {
+    volume = Dataset_FLASH_Create("snshock_3d_hdf5_chk_0266", "/dens");
+    //volume = Dataset_FLASH_Create("super3d_hdf5_plt_cnt_0122", "/dens");
     GLFWwindow* window = initWindow(800, 400);
     if( NULL != window )
     {
@@ -280,9 +320,8 @@ void convert_format() {
 }
 
 int main() {
-    convert_format();
-    volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
     render_one_frame_as_png();
+    //render_one_frame_as_png2();
     //render_blocks();
 }
 

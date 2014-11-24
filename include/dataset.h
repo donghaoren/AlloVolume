@@ -15,12 +15,19 @@ struct BlockDescription {
     size_t offset;
 };
 
+struct BlockTreeInfo {
+    int children[8];  // ---, +--, -+-, ++-, --+, +-+, -++, +++
+    int neighbors[6]; // -x, +x, -y, +y, -z, +z
+    int parent;
+};
+
 class VolumeBlocks {
 public:
     virtual float* getData() = 0;
     virtual size_t getDataSize() = 0;
     virtual int getBlockCount() = 0;
     virtual BlockDescription* getBlockDescription(int index) = 0;
+    virtual BlockTreeInfo* getBlockTreeInfo(int index) = 0;
 
     static void WriteToFile(VolumeBlocks* dataset, const char* path);
     static VolumeBlocks* LoadFromFile(const char* path);

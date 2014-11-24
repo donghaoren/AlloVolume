@@ -29,6 +29,7 @@ struct Vector {
     GPUEnable Vector operator / (float s) const { return Vector(x / s, y / s, z / s); }
     GPUEnable float operator * (const Vector& v) const { return x * v.x + y * v.y + z * v.z; }
     GPUEnable float len2() const { return x * x + y * y + z * z; }
+    double len2_double() const { return (double)x * (double)x + (double)y * (double)y + (double)z * (double)z; }
     GPUEnable float len() const { return std::sqrt(x * x + y * y + z * z); }
     GPUEnable Vector normalize() const { return *this / len(); }
     GPUEnable bool operator <= (const Vector& v) const { return x <= v.x && y <= v.y && z <= v.z; }

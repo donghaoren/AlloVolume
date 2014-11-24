@@ -13,6 +13,9 @@ void VolumeBlocks::WriteToFile(VolumeBlocks* dataset, const char* path) {
     for(int i = 0; i < block_count; i++) {
         fwrite(dataset->getBlockDescription(i), sizeof(BlockDescription), 1, fout);
     }
+    for(int i = 0; i < block_count; i++) {
+        fwrite(dataset->getBlockTreeInfo(i), sizeof(BlockTreeInfo), 1, fout);
+    }
     fclose(fout);
 }
 
@@ -25,8 +28,10 @@ public:
         fread(&o_data_size, sizeof(size_t), 1, fin);
         o_data = new float[o_data_size];
         o_blocks = new BlockDescription[o_block_count];
+        o_treeinfos = new BlockTreeInfo[o_block_count];
         fread(o_data, sizeof(float), o_data_size, fin);
         fread(o_blocks, sizeof(BlockDescription), o_block_count, fin);
+        fread(o_treeinfos, sizeof(BlockTreeInfo), o_block_count, fin);
         fclose(fin);
     }
 
@@ -46,6 +51,10 @@ public:
         return &o_blocks[index];
     }
 
+    virtual BlockTreeInfo* getBlockTreeInfo(int index) {
+        return &o_treeinfos[index];
+    }
+
     virtual ~Dataset_File() {
         delete [] o_data;
         delete [] o_blocks;
@@ -55,7 +64,7 @@ public:
     size_t o_data_size;
     size_t o_block_count;
     BlockDescription* o_blocks;
-
+    BlockTreeInfo* o_treeinfos;
 };
 
 VolumeBlocks* VolumeBlocks::LoadFromFile(const char* path) {
