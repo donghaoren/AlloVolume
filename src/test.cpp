@@ -249,7 +249,7 @@ void render_one_frame_as_png()
     tf->getMetadata()->blend_coefficient = 3e9;
     // lens_origin = Vector(-0.1e10, 1e8, -1e8);
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
-    lens_origin = Vector(-2e7, 1e7, 0.1e10);
+    lens_origin = Vector(0, 0, 0.1e10);
     lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
     img = Image::Create(800, 400);
     renderer = VolumeRenderer::CreateGPU();
@@ -258,16 +258,13 @@ void render_one_frame_as_png()
     renderer->setTransferFunction(tf);
     renderer->setImage(img);
 
-    renderer->render();
-    img->setNeedsDownload();
-
     for(int i = 0; i < 1; i++) {
         double t0 = getPreciseTime();
         renderer->render();
         double render_time = getPreciseTime() - t0;
         printf("Render time:  %.2lf ms\n", render_time * 1000.0);
     }
-
+    img->setNeedsDownload();
     img->save("output.png", "png16");
 }
 

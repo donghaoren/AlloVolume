@@ -1,10 +1,10 @@
 #include "renderer.h"
-#include <math.h>
 #include <algorithm>
 #include <typeinfo>
 #include <cxxabi.h>
 #include <float.h>
 #include <stdio.h>
+#include <math_functions.h>
 
 //#define CPU_EMULATE
 
@@ -182,13 +182,13 @@ public:
     }
     virtual void getRays(int width, int height, Ray* rays) {
         Vector ex = direction.normalize();
-        Vector ey = ex.cross(up).normalize();
-        Vector ez = ey.cross(ex).normalize();
+        Vector ey = up.cross(ex).normalize();
+        Vector ez = ex.cross(ey).normalize();
         for(int y = 0; y < height; y++) {
             for(int x = 0; x < width; x++) {
                 int p = y * width + x;
-                float theta = ((float)x / width - 0.5f) * PI * 2;
-                float phi = -((float)y / height - 0.5f) * PI;
+                float theta = ((float)x / (float)width - 0.5f) * PI * 2;
+                float phi = -((float)y / (float)height - 0.5f) * PI;
                 rays[p].origin = origin;
                 rays[p].direction = ex * cos(theta) * cos(phi) + ey * sin(theta) * cos(phi) + ez * sin(phi);
                 rays[p].direction = rays[p].direction.normalize();
@@ -197,8 +197,8 @@ public:
     }
     virtual void getRaysGPU(int width, int height, Ray* rays) {
         Vector ex = direction.normalize();
-        Vector ey = ex.cross(up).normalize();
-        Vector ez = ey.cross(ex).normalize();
+        Vector ey = up.cross(ex).normalize();
+        Vector ez = ex.cross(ey).normalize();
         int pixel_count = width * height;
         int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
         if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
@@ -397,28 +397,22 @@ struct ray_marching_parameters_t {
     BlockDescription* blocks;
     float* data;
     int pixel_count;
-    int block_count;
+    int block_count, block_min, block_max;
     float blend_coefficient;
     block_counter_t* block_counters;
 };
 
-inline CUDA_DEVICE float fminf(float a, float b) { return min(a, b); }
-inline CUDA_DEVICE float fmaxf(float a, float b) { return max(a, b); }
-inline CUDA_DEVICE Vector fminf(Vector a, Vector b) { return Vector(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
-inline CUDA_DEVICE Vector fmaxf(Vector a, Vector b) { return Vector(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
-inline CUDA_DEVICE Vector vmul(Vector a, Vector b) { return Vector(a.x * b.x, a.y * b.y, a.z * b.z); }
-
-inline CUDA_DEVICE
-int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar)
+inline CUDA_DEVICE __host__
+int intersectBox2(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar)
 {
     // compute intersection of ray with all six bbox planes
     Vector invR = Vector(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z);
-    Vector tbot = vmul(invR, boxmin - origin);
-    Vector ttop = vmul(invR, boxmax - origin);
+    Vector tbot = Vector((boxmin - origin).x * invR.x, (boxmin - origin).y * invR.y, (boxmin - origin).z * invR.z);
+    Vector ttop = Vector((boxmax - origin).x * invR.x, (boxmax - origin).y * invR.y, (boxmax - origin).z * invR.z);
 
     // re-order intersections to find smallest and largest on each axis
-    Vector tmin = fminf(ttop, tbot);
-    Vector tmax = fmaxf(ttop, tbot);
+    Vector tmin(fminf(ttop.x, tbot.x), fminf(ttop.y, tbot.y), fminf(ttop.z, tbot.z));
+    Vector tmax(fmaxf(ttop.x, tbot.x), fmaxf(ttop.y, tbot.y), fmaxf(ttop.z, tbot.z));
 
     // find the largest tmin and the smallest tmax
     float largest_tmin = fmaxf(fmaxf(tmin.x, tmin.y), fmaxf(tmin.x, tmin.z));
@@ -430,67 +424,43 @@ int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, 
     return smallest_tmax > largest_tmin;
 }
 
-inline CUDA_DEVICE float intersect_bbox(Vector p, Vector direction, Vector bmin, Vector bmax) {
-    // if inside, no intersection.
-    if(p <= bmax && p >= bmin) return 0;
-    // Test for x.
-    if(p.x < bmin.x && direction.x > 0) {
-        float t = (bmin.x - p.x) / direction.x;
-        Vector r = p + direction * t;
-        if(r.y >= bmin.y && r.y <= bmax.y && r.z >= bmin.z && r.z <= bmax.z) {
-            // there's only one possible, if we find it, return.
-            return t;
-        }
+inline CUDA_DEVICE __host__
+int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar) {
+    float tmin = FLT_MIN, tmax = FLT_MAX;
+    float eps = 1e-6;
+    if(fabs(direction.x) > eps) {
+        float tx1 = (boxmin.x - origin.x) / direction.x;
+        float tx2 = (boxmax.x - origin.x) / direction.x;
+        tmin = fmaxf(tmin, fminf(tx1, tx2));
+        tmax = fminf(tmax, fmaxf(tx1, tx2));
+    } else {
+        if(origin.x > boxmax.x || origin.x < boxmin.x) return false;
     }
-    if(p.x > bmax.x && direction.x < 0) {
-        float t = (bmax.x - p.x) / direction.x;
-        Vector r = p + direction * t;
-        if(r.y >= bmin.y && r.y <= bmax.y && r.z >= bmin.z && r.z <= bmax.z) {
-            return t;
-        }
+    if(fabs(direction.y) > eps) {
+        float ty1 = (boxmin.y - origin.y) / direction.y;
+        float ty2 = (boxmax.y - origin.y) / direction.y;
+        tmin = fmaxf(tmin, fminf(ty1, ty2));
+        tmax = fminf(tmax, fmaxf(ty1, ty2));
+    } else {
+        if(origin.y > boxmax.y || origin.y < boxmin.y) return false;
     }
-    if(p.y < bmin.y && direction.y > 0) {
-        float t = (bmin.y - p.y) / direction.y;
-        Vector r = p + direction * t;
-        if(r.x >= bmin.x && r.x <= bmax.x && r.z >= bmin.z && r.z <= bmax.z) {
-            return t;
-        }
+    if(fabs(direction.z) > eps) {
+        float tz1 = (boxmin.z - origin.z) / direction.z;
+        float tz2 = (boxmax.z - origin.z) / direction.z;
+        tmin = fmaxf(tmin, fminf(tz1, tz2));
+        tmax = fminf(tmax, fmaxf(tz1, tz2));
+    } else {
+        if(origin.z > boxmax.z || origin.z < boxmin.z) return false;
     }
-    if(p.y > bmax.y && direction.y < 0) {
-        float t = (bmax.y - p.y) / direction.y;
-        Vector r = p + direction * t;
-        if(r.x >= bmin.x && r.x <= bmax.x && r.z >= bmin.z && r.z <= bmax.z) {
-            return t;
-        }
-    }
-    if(p.z < bmin.z && direction.z > 0) {
-        float t = (bmin.z - p.z) / direction.z;
-        Vector r = p + direction * t;
-        if(r.x >= bmin.x && r.x <= bmax.x && r.y >= bmin.y && r.y <= bmax.y) {
-            return t;
-        }
-    }
-    if(p.z > bmax.z && direction.z < 0) {
-        float t = (bmax.z - p.z) / direction.z;
-        Vector r = p + direction * t;
-        if(r.x >= bmin.x && r.x <= bmax.x && r.y >= bmin.y && r.y <= bmax.y) {
-            return t;
-        }
-    }
-    // no intersection.
-    return -1;
+    *tnear = tmin;
+    *tfar = tmax;
+    return tmax > tmin;
 }
 
-// inline CUDA_DEVICE float intersect_bbox_outpoint(Vector p, Vector direction, Vector bmin, Vector bmax) {
-
-// }
-
-
-inline CUDA_DEVICE float access_volume(float* data, int xsize, int ysize, int zsize, int ghost_count, int ix, int iy, int iz) {
+inline CUDA_DEVICE float access_volume(float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
     //return data[ix * ysize * zsize + iy * zsize + iz];
     return data[iz * xsize * ysize + iy * xsize + ix];
 }
-
 
 CUDA_DEVICE float block_interploate(Vector pos, BlockDescription& B, float* data) {
     // [ 0 | 1 | 2 | 3 ]
@@ -499,19 +469,19 @@ CUDA_DEVICE float block_interploate(Vector pos, BlockDescription& B, float* data
         (pos.y - B.min.y) / (B.max.y - B.min.y) * (B.ysize - B.ghost_count * 2) - 0.5f + B.ghost_count,
         (pos.z - B.min.z) / (B.max.z - B.min.z) * (B.zsize - B.ghost_count * 2) - 0.5f + B.ghost_count
     );
-    int ix = p.x, iy = p.y, iz = p.z;
+    int ix = floor(p.x), iy = floor(p.y), iz = floor(p.z);
     ix = clamp(ix, 0, B.xsize - 2);
     iy = clamp(iy, 0, B.ysize - 2);
     iz = clamp(iz, 0, B.zsize - 2);
     float tx = p.x - ix, ty = p.y - iy, tz = p.z - iz;
-    float t000 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy, iz);
-    float t001 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy, iz + 1);
-    float t010 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy + 1, iz);
-    float t011 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix, iy + 1, iz + 1);
-    float t100 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy, iz);
-    float t101 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy, iz + 1);
-    float t110 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy + 1, iz);
-    float t111 = access_volume(data, B.xsize, B.ysize, B.zsize, B.ghost_count, ix + 1, iy + 1, iz + 1);
+    float t000 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy, iz);
+    float t001 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy, iz + 1);
+    float t010 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy + 1, iz);
+    float t011 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy + 1, iz + 1);
+    float t100 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy, iz);
+    float t101 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy, iz + 1);
+    float t110 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy + 1, iz);
+    float t111 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy + 1, iz + 1);
     float t00 = t000 * (1.0f - tz) + t001 * tz;
     float t01 = t010 * (1.0f - tz) + t011 * tz;
     float t10 = t100 * (1.0f - tz) + t101 * tz;
@@ -557,16 +527,8 @@ CUDA_KERNEL void ray_block_test_kernel(ray_marching_parameters_t p) {
 CUDA_KERNEL
 void ray_marching_kernel(ray_marching_parameters_t p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    // {
-    //     int x = abs(idx % 1600 - 784);
-    //     int y = abs(idx / 1600 - (800 - 231));
-    //     if(x <= 0 && y <= 0) {
-    //     } else {
-    //         p.pixels[idx] = Color(0, 0, 0, 0);
-    //         return;
-    //     }
-    // }
     if(idx >= p.pixel_count) return;
+    //if(idx != 199 * 800 + 400) return;
     Lens::Ray ray = p.rays[idx];
     Vector pos = ray.origin;
     Vector d = ray.direction;
@@ -575,7 +537,7 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
     // Simple solution: fixed step size.
     float kmax = FLT_MAX;
     float L = p.blend_coefficient;
-    for(int block_cursor = 0; block_cursor < p.block_count; block_cursor++) {
+    for(int block_cursor = p.block_min; block_cursor < p.block_max; block_cursor++) {
         BlockDescription block = p.blocks[block_cursor];
         float kin, kout;
         if(intersectBox(pos, d, block.min, block.max, &kin, &kout)) {
@@ -589,16 +551,19 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
                 float step_size = distance / steps;
 
                 Color c0 = p.tf.get(block_interploate(pos + d * kout, block, p.data + block.offset));
+                c0.a = log(1.0f - c0.a);
                 for(int i = steps - 1; i >= 0; i--) {
+                    //printf("%g\n", block_interploate(pos + d * (kin + step_size * (i - 0.5f)), block, p.data + block.offset));
                     Color cm = p.tf.get(block_interploate(pos + d * (kin + step_size * (i - 0.5f)), block, p.data + block.offset));
+                    cm.a = log(1.0f - cm.a);
                     Color c1 = p.tf.get(block_interploate(pos + d * (kin + step_size * i), block, p.data + block.offset));
+                    c1.a = log(1.0f - c1.a);
                     // Runge Kutta Order 4 method.
                     // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
-                    Color k1 = (color - c0) * log(1.0f - c0.a) / L;
-                    float log1mcma = log(1.0f - cm.a);
-                    Color k2 = (color + k1 * (step_size * 0.5f) - cm) * log1mcma / L;
-                    Color k3 = (color + k2 * (step_size * 0.5f) - cm) * log1mcma / L;
-                    Color k4 = (color + k3 * (step_size) - c1) * log(1.0f - c1.a) / L;
+                    Color k1 = (color - c0) * c0.a / L;
+                    Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cm.a / L;
+                    Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cm.a / L;
+                    Color k4 = (color + k3 * (step_size) - c1) * c1.a / L;
                     color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
                     c0 = c1;
                 }
@@ -666,6 +631,24 @@ public:
         lens->getRaysGPU(image->getWidth(), image->getHeight(), rays.gpu);
         block_counters.allocate(pixel_count);
 
+        // {
+        //     rays.download();
+        //     lens->getRays(image->getWidth(), image->getHeight(), rays.cpu);
+        //     Lens::Ray ray = rays.cpu[199 * 800 + 400];
+        //     printf("%g %g %g %g %g %g\n", ray.origin.x, ray.origin.y, ray.origin.z, ray.direction.x, ray.direction.y, ray.direction.z);
+        //     for(int i = 0; i < block_count; i++) {
+        //         BlockDescription d = blocks.cpu[i];
+        //         float near, far;
+        //         int r = intersectBox(ray.origin, ray.direction, d.min, d.max, &near, &far);
+        //         if(r && d.min.x == 0 && d.min.y == 0) {
+        //             printf("%d %g %g (%g %g %g - %g %g %g)\n", r, near, far, d.min.x, d.min.y, d.min.z, d.max.x, d.max.y, d.max.z);
+        //         }
+        //     }
+        //     return;
+        //     //int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar)
+
+        // }
+
         int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
         if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
         ray_marching_parameters_t pms;
@@ -681,7 +664,10 @@ public:
         pms.tf.is_log = tf->getMetadata()->is_log_scale;
         pms.tf.size = tf->getMetadata()->size;
         pms.blend_coefficient = tf->getMetadata()->blend_coefficient;
-        pms.block_counters = block_counters.gpu;
+        pms.block_counters = block_counters.gpu;pms.block_min = 0;
+        pms.block_max = block_count;
+        pms.block_min = 0;
+        pms.block_max = block_count;
     #ifndef CPU_EMULATE
         // ray_block_test_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
         // block_counters.download();
@@ -692,6 +678,8 @@ public:
         // for(int i = 0; i <32; i++) {
         //     printf("%d: %d\n", i, bc_distribution[i]);
         // }
+        pms.block_min = 0;
+        pms.block_max = block_count;
         ray_marching_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
         cudaThreadSynchronize();
     #else
