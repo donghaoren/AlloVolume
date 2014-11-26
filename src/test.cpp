@@ -242,15 +242,15 @@ double getPreciseTime() {
 }
 #endif
 
-void render_one_frame_as_png()
+void render_one_frame_as_png(int argc, char* argv[])
 {
-    volume = Dataset_FLASH_Create("super3d_hdf5_plt_cnt_0122", "/dens");
+    volume = Dataset_FLASH_Create(argv[1], "/dens");
     tf = TransferFunction::CreateTest(1e-3, 1e8, 20, true);
-    tf->getMetadata()->blend_coefficient = 3e9;
+    tf->getMetadata()->blend_coefficient = 1e10;
     // lens_origin = Vector(-0.1e10, 1e8, -1e8);
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
-    lens_origin = Vector(0, 0, 0.1e10);
-    lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
+    lens_origin = Vector(3e9, 0, 1e9);
+    lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(-1, 0, 0));
     img = Image::Create(800, 400);
     renderer = VolumeRenderer::CreateGPU();
     renderer->setVolume(volume);
@@ -258,24 +258,24 @@ void render_one_frame_as_png()
     renderer->setTransferFunction(tf);
     renderer->setImage(img);
 
-    for(int i = 0; i < 5; i++) {
+    for(int i = 0; i < 1; i++) {
         double t0 = getPreciseTime();
         renderer->render();
         double render_time = getPreciseTime() - t0;
         printf("Render time:  %.2lf ms\n", render_time * 1000.0);
     }
     img->setNeedsDownload();
-    img->save("output.png", "png16");
+    img->save(argv[2], "png16");
 }
 
 void render_one_frame_as_png2()
 {
     volume = Dataset_FLASH_Create("snshock_3d_hdf5_chk_0266", "/dens");
-    tf = TransferFunction::CreateTest(1e-26, 1e-21, 3, true);
+    tf = TransferFunction::CreateTest(1e-26, 1e-21, 2, true);
     tf->getMetadata()->blend_coefficient = 3e19;
     // lens_origin = Vector(-0.1e10, 1e8, -1e8);
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
-    lens_origin = Vector(1.3e18, 1e16, 6e19);
+    lens_origin = Vector(1.3e18, 1e16, 2e19);
     lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
     img = Image::Create(800, 400);
     renderer = VolumeRenderer::CreateGPU();
@@ -316,8 +316,8 @@ void convert_format() {
     delete volume;
 }
 
-int main() {
-    render_one_frame_as_png();
+int main(int argc, char* argv[]) {
+    render_one_frame_as_png(argc, argv);
     //render_one_frame_as_png2();
     //render_blocks();
 }

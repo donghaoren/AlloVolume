@@ -56,6 +56,7 @@ public:
 
     static Lens* CreateEquirectangular(Vector origin, Vector up, Vector direction);
     static Lens* CreateEquirectangularStereo(Vector origin, Vector up, Vector direction, float eye_separation, float radius);
+    static Lens* CreatePerspective(Vector eye, Vector at, Vector up, Vector fovx);
 };
 
 class VolumeRenderer {

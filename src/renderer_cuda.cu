@@ -547,26 +547,36 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
                 float step_size = distance / steps;
 
                 Color c0 = p.tf.get(block_interploate(pos + d * kout, block, p.data + block.offset));
-                c0.a = log(1.0f - c0.a);
+                float c0s = log(1.0f - c0.a) / L;
+                c0.a = 1;
                 for(int i = steps - 1; i >= 0; i--) {
                     //printf("%g\n", block_interploate(pos + d * (kin + step_size * (i - 0.5f)), block, p.data + block.offset));
                     Color cm = p.tf.get(block_interploate(pos + d * (kin + step_size * (i - 0.5f)), block, p.data + block.offset));
-                    cm.a = log(1.0f - cm.a);
+                    float cms = log(1.0f - cm.a) / L;
+                    cm.a = 1;
                     Color c1 = p.tf.get(block_interploate(pos + d * (kin + step_size * i), block, p.data + block.offset));
-                    c1.a = log(1.0f - c1.a);
+                    float c1s = log(1.0f - c1.a) / L;
+                    c1.a = 1;
                     // Runge Kutta Order 4 method.
                     // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
-                    Color k1 = (color - c0) * c0.a / L;
-                    Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cm.a / L;
-                    Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cm.a / L;
-                    Color k4 = (color + k3 * (step_size) - c1) * c1.a / L;
+                    Color k1 = (color - c0) * c0s;
+                    Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cms;
+                    Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
+                    Color k4 = (color + k3 * (step_size) - c1) * c1s;
                     color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
                     c0 = c1;
+                    c0s = c1s;
                 }
                 kmax = kin;
             }
         }
     }
+    if(color.a != 0) {
+        color.r /= color.a;
+        color.g /= color.a;
+        color.b /= color.a;
+    } else color = Color(0, 0, 0, 0);
+    color = (color * 2) * (color * 2);
     p.pixels[idx] = color;
 }
 
@@ -617,6 +627,7 @@ public:
     }
     virtual void render() {
         // Sort blocks.
+        // TODO: origin not the same in OmniStereo mode.
         BlockCompare block_compare(lens->getCenter());
         sort(blocks.cpu, blocks.cpu + block_count, block_compare);
         blocks.upload();
@@ -626,24 +637,6 @@ public:
         rays.allocate(pixel_count);
         lens->getRaysGPU(image->getWidth(), image->getHeight(), rays.gpu);
         block_counters.allocate(pixel_count);
-
-        // {
-        //     rays.download();
-        //     lens->getRays(image->getWidth(), image->getHeight(), rays.cpu);
-        //     Lens::Ray ray = rays.cpu[199 * 800 + 400];
-        //     printf("%g %g %g %g %g %g\n", ray.origin.x, ray.origin.y, ray.origin.z, ray.direction.x, ray.direction.y, ray.direction.z);
-        //     for(int i = 0; i < block_count; i++) {
-        //         BlockDescription d = blocks.cpu[i];
-        //         float near, far;
-        //         int r = intersectBox(ray.origin, ray.direction, d.min, d.max, &near, &far);
-        //         if(r && d.min.x == 0 && d.min.y == 0) {
-        //             printf("%d %g %g (%g %g %g - %g %g %g)\n", r, near, far, d.min.x, d.min.y, d.min.z, d.max.x, d.max.y, d.max.z);
-        //         }
-        //     }
-        //     return;
-        //     //int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar)
-
-        // }
 
         int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
         if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
@@ -665,17 +658,6 @@ public:
         pms.block_min = 0;
         pms.block_max = block_count;
     #ifndef CPU_EMULATE
-        // ray_block_test_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
-        // block_counters.download();
-        // int bc_distribution[32] = {0};
-        // for(int i = 0; i < pixel_count; i++) {
-        //     bc_distribution[block_counters[i].count] += 1;
-        // }
-        // for(int i = 0; i <32; i++) {
-        //     printf("%d: %d\n", i, bc_distribution[i]);
-        // }
-        pms.block_min = 0;
-        pms.block_max = block_count;
         ray_marching_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
         cudaThreadSynchronize();
     #else
