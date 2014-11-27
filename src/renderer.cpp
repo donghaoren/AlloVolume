@@ -1,7 +1,14 @@
 #include "renderer.h"
 
+#include <yaml-cpp/yaml.h>
 #include <zmq.h>
 #include <unistd.h>
+
+#include <string>
+
+using namespace std;
+
+YAML::Node config;
 
 //const char* myep = "epgm://en0;224.0.0.1:5555";
 const char* myep = "tcp://127.0.0.1:5555";
@@ -9,42 +16,57 @@ const char* myep = "tcp://127.0.0.1:5555";
 void server() {
     void* zmq_context = zmq_ctx_new();
     void* socket = zmq_socket(zmq_context, ZMQ_PUB);
-    int r = zmq_bind(socket, myep);
+    int r = zmq_bind(socket, config["renderer"]["broadcast"].as<string>().c_str());
     if(r < 0) {
         printf("r = %d, %s\n", r, zmq_strerror(errno));
     }
+    int test_size = 100 * 1000000;
+    char* data = new char[test_size];
+    for(int i = 0; i < test_size; i++) {
+        data[i] = (char)i;
+    }
     while(1) {
-        int r = zmq_send(socket, "HELLO", 5, 0);
+        int r = zmq_send(socket, data, test_size, 0);
         if(r < 0) {
             printf("r = %d, %s\n", r, zmq_strerror(errno));
         } else {
             printf("Sent 1 packet.\n");
         }
-        sleep(1);
+        usleep(1000000);
     }
 }
 
 void client() {
     void* zmq_context = zmq_ctx_new();
     void* socket = zmq_socket(zmq_context, ZMQ_SUB);
-    int r = zmq_connect(socket, myep);
+    int r = zmq_connect(socket, config["renderer"]["broadcast"].as<string>().c_str());
     if(r < 0) {
         printf("r = %d, %s\n", r, zmq_strerror(errno));
     }
     zmq_setsockopt(socket, ZMQ_SUBSCRIBE, "", 0);
+    int test_size = 100 * 1000000;
+    char* data = new char[test_size];
     while(1) {
         char buffer[100] = { '\0' };
-        int r = zmq_recv(socket, buffer, 5, 0);
+        int r = zmq_recv(socket, data, test_size, 0);
         if(r < 0) {
             printf("r = %d, %s\n", r, zmq_strerror(errno));
         } else {
-            printf("Packet: %s\n", buffer);
+            bool failure = false;
+            for(int i = 0; i < test_size; i++) {
+                if(data[i] != (char)i) failure = true;
+            }
+            if(failure)
+                printf("Packet Failed: %s\n", buffer);
+            else
+                printf("Packet: %d\n", test_size);
         }
         sleep(1);
     }
 }
 
 int main(int argc, char* argv[]) {
-    if(argc == 1) server();
-    else client();
+    config = YAML::LoadFile("allovolume.yaml");
+    if(argc == 2) client();
+    else server();
 }
