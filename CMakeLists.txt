@@ -13,16 +13,22 @@ ENDIF ( )
 FIND_PACKAGE ( PkgConfig REQUIRED )
 PKG_SEARCH_MODULE ( GLFW REQUIRED glfw3 )
 
+PKG_SEARCH_MODULE ( ZeroMQ REQUIRED libzmq )
+
 FIND_PACKAGE ( CUDA REQUIRED )
 FIND_PACKAGE ( HDF5 REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( FreeImage REQUIRED )
 
+LINK_DIRECTORIES (
+  ${ZeroMQ_LIBRARY_DIRS}
+)
+
 INCLUDE_DIRECTORIES (
   include
   ${HDF5_INCLUDE_DIRS}
   ${GLFW_INCLUDE_DIRS}
-  ${FREEIMAGE_INCLUDE_DIRS}
+  ${FREEIMAGE_INCLUDE_PATH}
 )
 
 ADD_LIBRARY ( dataset
@@ -30,13 +36,17 @@ ADD_LIBRARY ( dataset
     src/dataset_flash.cpp
 )
 
-CUDA_ADD_LIBRARY ( renderer
+CUDA_ADD_LIBRARY ( renderer_cuda
     src/renderer_cuda.cu
     src/image_codec.cpp
 )
 
 ADD_EXECUTABLE ( test
     src/test.cpp
+)
+
+ADD_EXECUTABLE ( renderer
+    src/renderer.cpp
 )
 
 IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" )
@@ -54,8 +64,17 @@ ENDIF ( )
 
 TARGET_LINK_LIBRARIES ( test
     dataset
-    renderer
+    renderer_cuda
     ${FREEIMAGE_LIBRARIES}
     ${HDF5_LIBRARIES}
     ${OPENGL_LIBRARIES}
+)
+
+TARGET_LINK_LIBRARIES ( renderer
+    # dataset
+    # renderer_cuda
+    # ${FREEIMAGE_LIBRARIES}
+    # ${HDF5_LIBRARIES}
+    # ${OPENGL_LIBRARIES}
+    ${ZeroMQ_LIBRARIES}
 )
