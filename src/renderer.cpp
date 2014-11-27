@@ -3,13 +3,13 @@
 #include <zmq.h>
 #include <unistd.h>
 
-void* zmq_context;
-void* socket;
+//const char* myep = "epgm://en0;224.0.0.1:5555";
+const char* myep = "tcp://127.0.0.1:5555";
 
 void server() {
-    zmq_context = zmq_ctx_new();
-    socket = zmq_socket(zmq_context, ZMQ_PUB);
-    int r = zmq_bind(socket, "epgm://en0;224.0.0.1:5555");
+    void* zmq_context = zmq_ctx_new();
+    void* socket = zmq_socket(zmq_context, ZMQ_PUB);
+    int r = zmq_bind(socket, myep);
     if(r < 0) {
         printf("r = %d, %s\n", r, zmq_strerror(errno));
     }
@@ -25,9 +25,9 @@ void server() {
 }
 
 void client() {
-    zmq_context = zmq_ctx_new();
-    socket = zmq_socket(zmq_context, ZMQ_SUB);
-    int r = zmq_connect(socket, "epgm://en0;224.0.0.1:5555");
+    void* zmq_context = zmq_ctx_new();
+    void* socket = zmq_socket(zmq_context, ZMQ_SUB);
+    int r = zmq_connect(socket, myep);
     if(r < 0) {
         printf("r = %d, %s\n", r, zmq_strerror(errno));
     }
