@@ -50,6 +50,10 @@ ADD_EXECUTABLE ( test
     src/test.cpp
 )
 
+ADD_EXECUTABLE ( dataset_converter
+    src/dataset_converter.cpp
+)
+
 ADD_EXECUTABLE ( renderer
     src/renderer.cpp
 )
@@ -66,6 +70,11 @@ IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
       ${GLFW_STATIC_LIBRARIES}
     )
 ENDIF ( )
+
+TARGET_LINK_LIBRARIES ( dataset_converter
+  dataset
+  ${HDF5_LIBRARIES}
+)
 
 TARGET_LINK_LIBRARIES ( test
     dataset

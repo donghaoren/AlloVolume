@@ -10,9 +10,6 @@ using namespace std;
 
 YAML::Node config;
 
-//const char* myep = "epgm://en0;224.0.0.1:5555";
-const char* myep = "tcp://127.0.0.1:5555";
-
 void server() {
     void* zmq_context = zmq_ctx_new();
     void* socket = zmq_socket(zmq_context, ZMQ_PUB);
@@ -20,7 +17,7 @@ void server() {
     if(r < 0) {
         printf("r = %d, %s\n", r, zmq_strerror(errno));
     }
-    int test_size = 100 * 1000000;
+    int test_size = 1 * 1000000;
     char* data = new char[test_size];
     for(int i = 0; i < test_size; i++) {
         data[i] = (char)i;
