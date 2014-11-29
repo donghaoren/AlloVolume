@@ -310,31 +310,45 @@ void render_one_frame_as_png(int argc, char* argv[])
     // lens_origin = Vector(-0.1e10, 1e8, -1e8);
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
     Vector lens1_origin = Vector(0, 2e9, 0);
-    Lens* lens1 = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), -lens_origin.normalize());
+    Lens* lens1 = Lens::CreateEquirectangular(lens1_origin, Vector(0, 0, 1), -lens1_origin.normalize());
 
     Vector lens2_origin = Vector(0, 0, 2e9);
-    Lens* lens2 = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), -lens_origin.normalize());
+    Lens* lens2 = Lens::CreateEquirectangular(lens2_origin, Vector(0, 1, 0), -lens2_origin.normalize());
 
     renderer = VolumeRenderer::CreateGPU();
 
+    int image_size = 1600 * 800;
     img = Image::Create(1600, 1600);
-
     Image* img_render = Image::Create(1600, 800);
+
     renderer->setVolume(volume);
     renderer->setLens(lens1);
     renderer->setTransferFunction(tf);
     renderer->setImage(img_render);
     renderer->render();
     img_render->setNeedsDownload();
-    memcpy(img->getPixels(), img_render->getPixels(), sizeof(Color) * 1600 * 800);
+    Color* pixels = img_render->getPixels();
+    for(int i = 0; i < image_size; i++) {
+        pixels[i].r = transform_color(pixels[i].r);
+        pixels[i].g = transform_color(pixels[i].g);
+        pixels[i].b = transform_color(pixels[i].b);
+        pixels[i].a = 1;
+    }
+    memcpy(img->getPixels(), pixels, sizeof(Color) * image_size);
 
-    renderer->setVolume(volume);
     renderer->setLens(lens2);
     renderer->setTransferFunction(tf);
     renderer->setImage(img_render);
     renderer->render();
     img_render->setNeedsDownload();
-    memcpy(img->getPixels() + sizeof(Color) * 1600 * 800, img_render->getPixels(), sizeof(Color) * 1600 * 800);
+    pixels = img_render->getPixels();
+    for(int i = 0; i < image_size; i++) {
+        pixels[i].r = transform_color(pixels[i].r);
+        pixels[i].g = transform_color(pixels[i].g);
+        pixels[i].b = transform_color(pixels[i].b);
+        pixels[i].a = 1;
+    }
+    memcpy(img->getPixels() + image_size, pixels, sizeof(Color) * image_size);
 
     img->save(argv[2], "png16");
 }
