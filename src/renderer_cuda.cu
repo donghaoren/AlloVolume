@@ -382,7 +382,10 @@ struct transfer_function_t {
     bool is_log;
 
     inline CUDA_DEVICE Color get(float t) {
-        if(is_log) t = log(t);
+        if(is_log) {
+            if(t > 0) t = log(t);
+            else t = min;
+        }
         return tf_interpolate(data, min, max, size, t);
     }
 };
