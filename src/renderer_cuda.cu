@@ -8,6 +8,8 @@
 
 //#define CPU_EMULATE
 
+#define BLENDING_RK4
+
 using namespace std;
 
 #define CUDA_DEFAULT_THREADS 64
@@ -454,7 +456,6 @@ int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, 
 }
 
 inline CUDA_DEVICE float access_volume(const float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
-    //return data[ix * ysize * zsize + iy * zsize + iz];
     return data[iz * xsize * ysize + iy * xsize + ix];
 }
 
@@ -520,55 +521,87 @@ CUDA_KERNEL void ray_block_test_kernel(ray_marching_parameters_t p) {
     p.block_counters[idx] = bc;
 }
 
+struct ray_marching_kernel_blockinfo_t {
+    float kin, kout;
+    int index;
+};
+
 CUDA_KERNEL
 void ray_marching_kernel(ray_marching_parameters_t p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx >= p.pixel_count) return;
-
     Lens::Ray ray = p.rays[idx];
     Vector pos = ray.origin;
     Vector d = ray.direction;
-    int block_cursor = 0;
     Color color(0, 0, 0, 0);
     // Simple solution: fixed step size.
     float kmax = FLT_MAX;
     float L = p.blend_coefficient;
+
+    // Block intersection.
+    ray_marching_kernel_blockinfo_t blockinfos[128];
+    int blockinfos_count = 0;
     for(int block_cursor = p.block_min; block_cursor < p.block_max; block_cursor++) {
         BlockDescription block = p.blocks[block_cursor];
         float kin, kout;
         if(intersectBox(pos, d, block.min, block.max, &kin, &kout)) {
             if(kin < 0) kin = 0;
-            if(kout > kmax) kout = kmax;
             if(kin < kout) {
-                // Render this block.
-                float distance = kout - kin;
-                float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-                int steps = ceil(distance / voxel_size);
-                float step_size = distance / steps;
-
-                Color c0 = p.tf.get(block_interploate(pos + d * kout, block, p.data + block.offset));
-                float c0s = log(1.0f - c0.a) / L;
-                c0.a = 1;
-                for(int i = steps - 1; i >= 0; i--) {
-                    //printf("%g\n", block_interploate(pos + d * (kin + step_size * (i - 0.5f)), block, p.data + block.offset));
-                    Color cm = p.tf.get(block_interploate(pos + d * (kin + step_size * (i - 0.5f)), block, p.data + block.offset));
-                    float cms = log(1.0f - cm.a) / L;
-                    cm.a = 1;
-                    Color c1 = p.tf.get(block_interploate(pos + d * (kin + step_size * i), block, p.data + block.offset));
-                    float c1s = log(1.0f - c1.a) / L;
-                    c1.a = 1;
-                    // Runge Kutta Order 4 method.
-                    // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
-                    Color k1 = (color - c0) * c0s;
-                    Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cms;
-                    Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
-                    Color k4 = (color + k3 * (step_size) - c1) * c1s;
-                    color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
-                    c0 = c1;
-                    c0s = c1s;
-                }
-                kmax = kin;
+                blockinfos[blockinfos_count].kin = kin;
+                blockinfos[blockinfos_count].kout = kout;
+                blockinfos[blockinfos_count].index = block_cursor;
+                blockinfos_count += 1;
             }
+        }
+    }
+    for(;;) {
+        bool swapped = false;
+        int n = blockinfos_count;
+        for(int c = 0; c < n - 1; c++) {
+            if(blockinfos[c].kin < blockinfos[c + 1].kin) {
+                ray_marching_kernel_blockinfo_t tmp = blockinfos[c + 1];
+                blockinfos[c + 1] = blockinfos[c];
+                blockinfos[c] = tmp;
+                swapped = true;
+            }
+        }
+        n -= 1;
+        if(!swapped) break;
+    }
+
+    for(int cursor = 0; cursor < blockinfos_count; cursor++) {
+        BlockDescription block = p.blocks[blockinfos[cursor].index];
+        float kin = blockinfos[cursor].kin;
+        float kout = blockinfos[cursor].kout;
+        if(kout > kmax) kout = kmax;
+        if(kin < kout) {
+            // Render this block.
+            float distance = kout - kin;
+            float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
+            int steps = ceil(distance / voxel_size * 2);
+            float step_size = distance / steps;
+            // Blending with RK4
+            Color c0 = p.tf.get(block_interploate(pos + d * kout, block, p.data + block.offset));
+            float c0s = log(1.0f - c0.a) / L;
+            c0.a = 1.0f;
+            for(int i = steps - 1; i >= 0; i--) {
+                //printf("%g\n", block_interploate(pos + d * (kin + step_size * (i + 0.5f)), block, p.data + block.offset));
+                Color cm = p.tf.get(block_interploate(pos + d * (kin + step_size * ((float)i + 0.5f)), block, p.data + block.offset));
+                float cms = log(1.0f - cm.a) / L;
+                cm.a = 1.0f;
+                Color c1 = p.tf.get(block_interploate(pos + d * (kin + step_size * i), block, p.data + block.offset));
+                float c1s = log(1.0f - c1.a) / L;
+                c1.a = 1.0f;
+                // Runge Kutta Order 4 method.
+                // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
+                Color k1 = (color - c0) * c0s;
+                Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cms;
+                Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
+                Color k4 = (color + k3 * (step_size) - c1) * c1s;
+                color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
+                c0 = c1;
+                c0s = c1s;
+            }
+            kmax = kin;
         }
     }
     if(color.a != 0) {
@@ -576,7 +609,6 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
         color.g /= color.a;
         color.b /= color.a;
     } else color = Color(0, 0, 0, 0);
-    color = (color * 2) * (color * 2);
     p.pixels[idx] = color;
 }
 

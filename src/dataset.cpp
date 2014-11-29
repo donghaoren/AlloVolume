@@ -31,7 +31,7 @@ public:
         o_treeinfos = new BlockTreeInfo[o_block_count];
         fread(o_data, sizeof(float), o_data_size, fin);
         fread(o_blocks, sizeof(BlockDescription), o_block_count, fin);
-        fread(o_treeinfos, sizeof(BlockTreeInfo), o_block_count, fin);
+        //fread(o_treeinfos, sizeof(BlockTreeInfo), o_block_count, fin);
         fclose(fin);
     }
 
