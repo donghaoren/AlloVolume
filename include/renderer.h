@@ -14,11 +14,12 @@ public:
     virtual int getHeight() = 0;
     virtual void setNeedsUpload() = 0;
     virtual void setNeedsDownload() = 0;
-    virtual void save(const char* path, const char* format) = 0;
+    virtual bool save(const char* path, const char* format) = 0;
 
     virtual ~Image() { }
 
     static Image* Create(int width, int height);
+    static bool WriteImageFile(const char* path, const char* format, int width, int height, Color* pixels);
 };
 
 class TransferFunction {
@@ -38,7 +39,8 @@ public:
 
     virtual ~TransferFunction() { }
 
-    static TransferFunction* CreateTest(float min, float max, int ticks, bool is_log);
+    static TransferFunction* CreateGaussianTicks(float min, float max, int ticks, bool is_log);
+    static TransferFunction* CreateLinearGradient(float min, float max, bool is_log);
 };
 
 class Lens {
@@ -54,8 +56,7 @@ public:
 
     virtual ~Lens() { }
 
-    static Lens* CreateEquirectangular(Vector origin, Vector up, Vector direction);
-    static Lens* CreateEquirectangularStereo(Vector origin, Vector up, Vector direction, float eye_separation, float radius);
+    static Lens* CreateEquirectangular(Vector origin, Vector up, Vector direction, float eye_separation = 0.0f, float radius = 1.0f);
     static Lens* CreatePerspective(Vector eye, Vector at, Vector up, Vector fovx);
     static Lens* CreateOrthogonal(Vector eye, Vector at, Vector up, float spanx);
 };
@@ -71,8 +72,6 @@ public:
 
     static VolumeRenderer* CreateGPU();
 };
-
-bool writeImageFile(const char* path, const char* format, int width, int height, Color* pixels);
 
 }
 

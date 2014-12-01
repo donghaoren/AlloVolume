@@ -1,234 +1,14 @@
 #include "renderer.h"
-#include <algorithm>
-#include <typeinfo>
-#include <cxxabi.h>
 #include <float.h>
 #include <stdio.h>
 #include <math_functions.h>
+#include <algorithm>
 
-//#define CPU_EMULATE
-
-#define BLENDING_RK4
+#include "cuda_common.h"
 
 using namespace std;
 
-#define CUDA_DEFAULT_THREADS 64
-
 namespace allovolume {
-
-#ifndef CPU_EMULATE
-
-char* demangle_raw(const char* mangled) {
-    int status;
-    char* result = abi::__cxa_demangle(mangled, 0, 0, &status);
-    return result;
-}
-
-template<typename T>
-T* cudaAllocate(size_t size) {
-    T* result = 0;
-    cudaError_t err = cudaMalloc((void**)&result, sizeof(T) * size);
-    if(!result) {
-        printf("cudaAllocate: cudaMalloc() of %llu of %s (%.2f MB): %s\n",
-            size, demangle_raw(typeid(T).name()), sizeof(T) * size / 1048576.0,
-            cudaGetErrorString(err));
-        throw 0;
-    }
-    return result;
-}
-
-template<typename T>
-void cudaDeallocate(T* pointer) {
-    cudaFree(pointer);
-}
-
-template<typename T>
-void cudaUpload(T* dest, T* src, size_t count) {
-    cudaError_t err = cudaMemcpy(dest, src, sizeof(T) * count, cudaMemcpyHostToDevice);
-    if(err != cudaSuccess) {
-        printf("cudaUpload: cudaMemcpy(): %s\n", cudaGetErrorString(err));
-        throw 0;
-    }
-}
-
-template<typename T>
-void cudaDownload(T* dest, T* src, size_t count) {
-    cudaError_t err = cudaMemcpy(dest, src, sizeof(T) * count, cudaMemcpyDeviceToHost);
-    if(err != cudaSuccess) {
-        printf("cudaUpload: cudaMemcpy(): %s\n", cudaGetErrorString(err));
-        throw 0;
-    }
-}
-
-#define CUDA_KERNEL __global__
-#define CUDA_DEVICE __device__
-
-#else
-
-template<typename T>
-T* cudaAllocate(size_t size) {
-    return new T[size];
-}
-
-template<typename T>
-void cudaDeallocate(T* pointer) {
-    delete [] pointer;
-}
-
-template<typename T>
-void cudaUpload(T* dest, T* src, size_t count) {
-    memcpy(dest, src, sizeof(T) * count);
-}
-
-template<typename T>
-void cudaDownload(T* dest, T* src, size_t count) {
-    memcpy(dest, src, sizeof(T) * count);
-}
-
-struct int3 { int x, y, z; };
-int3 blockDim, blockIdx, threadIdx;
-
-#define CUDA_KERNEL
-#define CUDA_DEVICE
-
-#endif
-
-class ImageImpl : public Image {
-public:
-    ImageImpl(int width_, int height_) {
-        width = width_; height = height_;
-        data_cpu = new Color[width * height];
-        data_gpu = cudaAllocate<Color>(width * height);
-        needs_upload = false;
-        needs_download = false;
-    }
-
-    virtual Color* getPixels() {
-        if(needs_download) {
-            cudaDownload<Color>(data_cpu, data_gpu, width * height);
-            needs_download = false;
-        }
-        return data_cpu;
-    }
-    virtual Color* getPixelsGPU() {
-        if(needs_upload) {
-            cudaUpload<Color>(data_gpu, data_cpu, width * height);
-            needs_upload = false;
-        }
-        return data_gpu;
-    }
-    virtual int getWidth() { return width; }
-    virtual int getHeight() { return height; }
-    virtual void setNeedsUpload() {
-        needs_upload = true;
-    }
-    virtual void setNeedsDownload() {
-        needs_download = true;
-    }
-
-    virtual void save(const char* path, const char* format) {
-        Color* pixels = getPixels();
-        writeImageFile(path, format, width, height, pixels);
-    }
-
-    virtual ~ImageImpl() {
-        delete [] data_cpu;
-        cudaDeallocate(data_gpu);
-    }
-
-    int width, height;
-    Color *data_cpu, *data_gpu;
-    bool needs_upload, needs_download;
-};
-
-Image* Image::Create(int width, int height) { return new ImageImpl(width, height); }
-
-CUDA_KERNEL void get_rays_kernel(Vector ex, Vector ey, Vector ez, Vector origin, int width, int height, int pixel_count, Lens::Ray* rays) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx >= pixel_count) return;
-    int x = idx % width;
-    int y = idx / width;
-    float theta = ((float)x / width - 0.5f) * PI * 2;
-    float phi = -((float)y / height - 0.5f) * PI;
-    rays[idx].origin = origin;
-    Vector direction = ex * cos(theta) * cos(phi) + ey * sin(theta) * cos(phi) + ez * sin(phi);
-    direction = direction.normalize();
-    rays[idx].direction = direction;
-}
-
-class LensImpl : public Lens {
-public:
-    LensImpl(Vector origin_, Vector up_, Vector direction_) {
-        origin = origin_;
-        up = up_;
-        direction = direction_;
-        is_stereo = false;
-    }
-    LensImpl(Vector origin_, Vector up_, Vector direction_, float eye_separation_, float radius_) {
-        origin = origin_;
-        up = up_;
-        direction = direction_;
-        is_stereo = true;
-        eye_separation = eye_separation_;
-        radius = radius_;
-    }
-    virtual Vector getCenter() {
-        return origin;
-    }
-    virtual void setParameter(const char* name, void* value) {
-        if(strcmp(name, "origin") == 0) origin = *(Vector*)value;
-        if(strcmp(name, "up") == 0) up = *(Vector*)value;
-        if(strcmp(name, "direction") == 0) direction = *(Vector*)value;
-        if(strcmp(name, "eye_separation") == 0) eye_separation = *(float*)value;
-        if(strcmp(name, "radius") == 0) eye_separation = *(float*)value;
-    }
-    virtual void getRays(int width, int height, Ray* rays) {
-        Vector ex = direction.normalize();
-        Vector ey = up.cross(ex).normalize();
-        Vector ez = ex.cross(ey).normalize();
-        for(int y = 0; y < height; y++) {
-            for(int x = 0; x < width; x++) {
-                int p = y * width + x;
-                float theta = ((float)x / (float)width - 0.5f) * PI * 2;
-                float phi = -((float)y / (float)height - 0.5f) * PI;
-                rays[p].origin = origin;
-                rays[p].direction = ex * cos(theta) * cos(phi) + ey * sin(theta) * cos(phi) + ez * sin(phi);
-                rays[p].direction = rays[p].direction.normalize();
-            }
-        }
-    }
-    virtual void getRaysGPU(int width, int height, Ray* rays) {
-        Vector ex = direction.normalize();
-        Vector ey = up.cross(ex).normalize();
-        Vector ez = ex.cross(ey).normalize();
-        int pixel_count = width * height;
-        int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
-        if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
-    #ifndef CPU_EMULATE
-        get_rays_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
-    #else
-        blockDim.x = CUDA_DEFAULT_THREADS;
-        for(int i = 0; i < cuda_blocks; i++) {
-            for(int j = 0; j < CUDA_DEFAULT_THREADS; j++) {
-                blockIdx.x = i;
-                threadIdx.x = j;
-                get_rays_kernel(ex, ey, ez, origin, width, height, pixel_count, rays);
-            }
-        }
-    #endif
-    }
-
-    Vector origin, up, direction;
-    float eye_separation, radius;
-    bool is_stereo;
-};
-
-Lens* Lens::CreateEquirectangular(Vector origin, Vector up, Vector direction) {
-    return new LensImpl(origin, up, direction);
-}
-Lens* Lens::CreateEquirectangularStereo(Vector origin, Vector up, Vector direction, float eye_separation, float radius) {
-    return new LensImpl(origin, up, direction, eye_separation, radius);
-}
 
 Color rainbow_colormap[] = { Color(0.471412, 0.108766, 0.527016), Color(0.445756, 0.110176, 0.549008), Color(0.420099, 0.111586, 0.571001), Color(0.394443, 0.112997, 0.592993), Color(0.368787, 0.114407, 0.614986), Color(0.34313, 0.115817, 0.636978), Color(0.317474, 0.117227, 0.658971), Color(0.30382, 0.130517, 0.677031), Color(0.294167, 0.147766, 0.69378), Color(0.284514, 0.165015, 0.71053), Color(0.274861, 0.182264, 0.727279), Color(0.265208, 0.199513, 0.744028), Color(0.255555, 0.216762, 0.760777), Color(0.250196, 0.236254, 0.772907), Color(0.249132, 0.257991, 0.780416), Color(0.248069, 0.279728, 0.787925), Color(0.247005, 0.301465, 0.795434), Color(0.245941, 0.323202, 0.802943), Color(0.244878, 0.344939, 0.810452), Color(0.244962, 0.366259, 0.815542), Color(0.248488, 0.386326, 0.813373), Color(0.252015, 0.406394, 0.811204), Color(0.255542, 0.426461, 0.809035), Color(0.259069, 0.446529, 0.806867), Color(0.262595, 0.466596, 0.804698), Color(0.266122, 0.486664, 0.802529), Color(0.27249, 0.50249, 0.792471), Color(0.278857, 0.518316, 0.782413), Color(0.285225, 0.534141, 0.772355), Color(0.291592, 0.549967, 0.762297), Color(0.29796, 0.565793, 0.752239), Color(0.304327, 0.581619, 0.742181), Color(0.312466, 0.593997, 0.728389), Color(0.321196, 0.605227, 0.713353), Color(0.329926, 0.616456, 0.698317), Color(0.338656, 0.627685, 0.683282), Color(0.347385, 0.638915, 0.668246), Color(0.356115, 0.650144, 0.65321), Color(0.366029, 0.659446, 0.637262), Color(0.377127, 0.666821, 0.620403), Color(0.388225, 0.674195, 0.603544), Color(0.399323, 0.681569, 0.586684), Color(0.410421, 0.688944, 0.569825), Color(0.421519, 0.696318, 0.552966), Color(0.433185, 0.702972, 0.536335), Color(0.446557, 0.707463, 0.520393), Color(0.459929, 0.711955, 0.504451), Color(0.473301, 0.716446, 0.488509), Color(0.486673, 0.720937, 0.472566), Color(0.500045, 0.725429, 0.456624), Color(0.513417, 0.72992, 0.440682), Color(0.528494, 0.732128, 0.427547), Color(0.543572, 0.734335, 0.414412), Color(0.558649, 0.736543, 0.401277), Color(0.573727, 0.738751, 0.388142), Color(0.588804, 0.740958, 0.375007), Color(0.603882, 0.743166, 0.361872), Color(0.619337, 0.743583, 0.351457), Color(0.634919, 0.743402, 0.34195), Color(0.650501, 0.743222, 0.332443), Color(0.666083, 0.743042, 0.322935), Color(0.681665, 0.742861, 0.313428), Color(0.697247, 0.742681, 0.303921), Color(0.712199, 0.740876, 0.2961), Color(0.726521, 0.737447, 0.289966), Color(0.740842, 0.734018, 0.283832), Color(0.755164, 0.730589, 0.277698), Color(0.769486, 0.727159, 0.271564), Color(0.783808, 0.72373, 0.26543), Color(0.797308, 0.719143, 0.259858), Color(0.808342, 0.711081, 0.255976), Color(0.819376, 0.703019, 0.252094), Color(0.83041, 0.694957, 0.248211), Color(0.841444, 0.686895, 0.244329), Color(0.852478, 0.678833, 0.240446), Color(0.863512, 0.670771, 0.236564), Color(0.869512, 0.6567, 0.23336), Color(0.875513, 0.642629, 0.230157), Color(0.881513, 0.628557, 0.226953), Color(0.887513, 0.614486, 0.22375), Color(0.893514, 0.600415, 0.220546), Color(0.899514, 0.586344, 0.217343), Color(0.901235, 0.567363, 0.213599), Color(0.901529, 0.546745, 0.209674), Color(0.901823, 0.526127, 0.20575), Color(0.902117, 0.505509, 0.201825), Color(0.902412, 0.484891, 0.197901), Color(0.902706, 0.464273, 0.193976), Color(0.900873, 0.441104, 0.189491), Color(0.896914, 0.415383, 0.184446), Color(0.892955, 0.389662, 0.179401), Color(0.888995, 0.363941, 0.174356), Color(0.885036, 0.33822, 0.16931), Color(0.881077, 0.312499, 0.164265), Color(0.877277, 0.286724, 0.159347), Color(0.873957, 0.260788, 0.15481), Color(0.870638, 0.234851, 0.150274), Color(0.867318, 0.208915, 0.145737), Color(0.863998, 0.182979, 0.141201), Color(0.860679, 0.157042, 0.136664), Color(0.857359, 0.131106, 0.132128) };
 int rainbow_colormap_length = 101;
@@ -239,22 +19,43 @@ int temperature_colormap_length = 101;
 Color gist_ncer_colormap[] = { Color(0.041600, 0.000000, 0.000000, 1.000000), Color(0.062190, 0.000000, 0.000000, 1.000000), Color(0.093074, 0.000000, 0.000000, 1.000000), Color(0.113664, 0.000000, 0.000000, 1.000000), Color(0.144548, 0.000000, 0.000000, 1.000000), Color(0.165138, 0.000000, 0.000000, 1.000000), Color(0.196023, 0.000000, 0.000000, 1.000000), Color(0.216612, 0.000000, 0.000000, 1.000000), Color(0.247497, 0.000000, 0.000000, 1.000000), Color(0.268087, 0.000000, 0.000000, 1.000000), Color(0.298971, 0.000000, 0.000000, 1.000000), Color(0.319561, 0.000000, 0.000000, 1.000000), Color(0.350445, 0.000000, 0.000000, 1.000000), Color(0.371035, 0.000000, 0.000000, 1.000000), Color(0.401920, 0.000000, 0.000000, 1.000000), Color(0.432804, 0.000000, 0.000000, 1.000000), Color(0.453394, 0.000000, 0.000000, 1.000000), Color(0.484278, 0.000000, 0.000000, 1.000000), Color(0.504868, 0.000000, 0.000000, 1.000000), Color(0.535753, 0.000000, 0.000000, 1.000000), Color(0.556342, 0.000000, 0.000000, 1.000000), Color(0.587227, 0.000000, 0.000000, 1.000000), Color(0.607816, 0.000000, 0.000000, 1.000000), Color(0.638701, 0.000000, 0.000000, 1.000000), Color(0.659291, 0.000000, 0.000000, 1.000000), Color(0.690175, 0.000000, 0.000000, 1.000000), Color(0.710765, 0.000000, 0.000000, 1.000000), Color(0.741649, 0.000000, 0.000000, 1.000000), Color(0.762239, 0.000000, 0.000000, 1.000000), Color(0.793124, 0.000000, 0.000000, 1.000000), Color(0.824008, 0.000000, 0.000000, 1.000000), Color(0.844598, 0.000000, 0.000000, 1.000000), Color(0.875482, 0.000000, 0.000000, 1.000000), Color(0.896072, 0.000000, 0.000000, 1.000000), Color(0.926957, 0.000000, 0.000000, 1.000000), Color(0.947546, 0.000000, 0.000000, 1.000000), Color(0.978431, 0.000000, 0.000000, 1.000000), Color(0.999020, 0.000000, 0.000000, 1.000000), Color(1.000000, 0.029903, 0.000000, 1.000000), Color(1.000000, 0.050491, 0.000000, 1.000000), Color(1.000000, 0.081373, 0.000000, 1.000000), Color(1.000000, 0.101962, 0.000000, 1.000000), Color(1.000000, 0.132844, 0.000000, 1.000000), Color(1.000000, 0.153432, 0.000000, 1.000000), Color(1.000000, 0.184314, 0.000000, 1.000000), Color(1.000000, 0.215197, 0.000000, 1.000000), Color(1.000000, 0.235785, 0.000000, 1.000000), Color(1.000000, 0.266667, 0.000000, 1.000000), Color(1.000000, 0.287255, 0.000000, 1.000000), Color(1.000000, 0.318138, 0.000000, 1.000000), Color(1.000000, 0.338726, 0.000000, 1.000000), Color(1.000000, 0.369608, 0.000000, 1.000000), Color(1.000000, 0.390196, 0.000000, 1.000000), Color(1.000000, 0.421079, 0.000000, 1.000000), Color(1.000000, 0.441667, 0.000000, 1.000000), Color(1.000000, 0.472549, 0.000000, 1.000000), Color(1.000000, 0.493137, 0.000000, 1.000000), Color(1.000000, 0.524020, 0.000000, 1.000000), Color(1.000000, 0.554902, 0.000000, 1.000000), Color(1.000000, 0.575490, 0.000000, 1.000000), Color(1.000000, 0.606373, 0.000000, 1.000000), Color(1.000000, 0.626961, 0.000000, 1.000000), Color(1.000000, 0.657843, 0.000000, 1.000000), Color(1.000000, 0.678431, 0.000000, 1.000000), Color(1.000000, 0.709314, 0.000000, 1.000000), Color(1.000000, 0.729902, 0.000000, 1.000000), Color(1.000000, 0.760784, 0.000000, 1.000000), Color(1.000000, 0.781372, 0.000000, 1.000000), Color(1.000000, 0.812255, 0.000000, 1.000000), Color(1.000000, 0.832843, 0.000000, 1.000000), Color(1.000000, 0.863725, 0.000000, 1.000000), Color(1.000000, 0.884313, 0.000000, 1.000000), Color(1.000000, 0.915196, 0.000000, 1.000000), Color(1.000000, 0.946078, 0.000000, 1.000000), Color(1.000000, 0.966666, 0.000000, 1.000000), Color(1.000000, 0.997548, 0.000000, 1.000000), Color(1.000000, 1.000000, 0.027205, 1.000000), Color(1.000000, 1.000000, 0.073528, 1.000000), Color(1.000000, 1.000000, 0.104411, 1.000000), Color(1.000000, 1.000000, 0.150734, 1.000000), Color(1.000000, 1.000000, 0.181617, 1.000000), Color(1.000000, 1.000000, 0.227940, 1.000000), Color(1.000000, 1.000000, 0.258823, 1.000000), Color(1.000000, 1.000000, 0.305146, 1.000000), Color(1.000000, 1.000000, 0.336029, 1.000000), Color(1.000000, 1.000000, 0.382352, 1.000000), Color(1.000000, 1.000000, 0.413235, 1.000000), Color(1.000000, 1.000000, 0.459558, 1.000000), Color(1.000000, 1.000000, 0.505882, 1.000000), Color(1.000000, 1.000000, 0.536764, 1.000000), Color(1.000000, 1.000000, 0.583088, 1.000000), Color(1.000000, 1.000000, 0.613970, 1.000000), Color(1.000000, 1.000000, 0.660294, 1.000000), Color(1.000000, 1.000000, 0.691176, 1.000000), Color(1.000000, 1.000000, 0.737500, 1.000000), Color(1.000000, 1.000000, 0.768382, 1.000000), Color(1.000000, 1.000000, 0.814706, 1.000000), Color(1.000000, 1.000000, 0.845588, 1.000000), Color(1.000000, 1.000000, 0.891912, 1.000000), Color(1.000000, 1.000000, 0.922794, 1.000000), Color(1.000000, 1.000000, 0.969118, 1.000000) };
 int gist_ncer_colormap_length = 101;
 
-inline CUDA_DEVICE __host__ int clamp(int value, int min, int max) {
+__device__
+inline float interp(float a, float b, float t) {
+    return fmaf(t, b - a, a);
+}
+
+__device__ __host__
+inline int clampi(int value, int min, int max) {
     if(value < min) return min;
     if(value > max) return max;
     return value;
 }
 
-inline CUDA_DEVICE __host__ float clampf(float value, float min, float max) {
-    if(value < min) return min;
-    if(value > max) return max;
-    return value;
+__device__ __host__
+inline float clampf(float value, float min, float max) {
+    return fmaxf(min, fminf(max, value));
 }
 
-CUDA_DEVICE __host__ Color tf_interpolate(Color* tf, float tf_min, float tf_max, int tf_size, float t) {
-    float pos = clampf((t - tf_min) / (tf_max - tf_min), 0, 1) * tf_size - 0.5f;
+__device__
+inline float clamp01f(float value) { return __saturatef(value); }
+
+__device__
+inline Color tf_interpolate(Color* tf, float tf_min, float tf_max, int tf_size, float t) {
+    float pos = clamp01f((t - tf_min) / (tf_max - tf_min)) * tf_size - 0.5f;
     int idx = floor(pos);
-    idx = clamp(idx, 0, tf_size - 2);
+    idx = clampi(idx, 0, tf_size - 2);
+    float diff = pos - idx;
+    Color t0 = tf[idx];
+    Color t1 = tf[idx + 1];
+    return t0 * (1.0 - diff) + t1 * diff;
+}
+
+inline float clamp01f_host(float value) { return clampf(value, 0, 1); }
+
+inline Color tf_interpolate_host(Color* tf, float tf_min, float tf_max, int tf_size, float t) {
+    float pos = clamp01f_host((t - tf_min) / (tf_max - tf_min)) * tf_size - 0.5f;
+    int idx = floor(pos);
+    idx = clampi(idx, 0, tf_size - 2);
     float diff = pos - idx;
     Color t0 = tf[idx];
     Color t1 = tf[idx + 1];
@@ -264,7 +65,7 @@ CUDA_DEVICE __host__ Color tf_interpolate(Color* tf, float tf_min, float tf_max,
 class TransferFunctionImpl : public TransferFunction {
 public:
 
-    TransferFunctionImpl(float min, float max, int ticks, bool is_log) {
+    TransferFunctionImpl(float min, float max, bool is_log) {
         metadata.size = 1600;
         if(is_log) {
             min = log(min);
@@ -279,15 +80,30 @@ public:
         for(int i = 0; i < metadata.size; i++) {
             content_cpu[i] = Color(0, 0, 0, 0);
         }
+    }
+
+    void addGaussianTicks(int ticks) {
+        float min = metadata.input_min;
+        float max = metadata.input_max;
 
         for(float i = 0; i < ticks; i++) {
-            //if(i != round(log(pow(10.0, 3.0)))) continue;
             float t = (float)i / ((float)ticks - 1);
-            Color c = tf_interpolate(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
+            Color c = tf_interpolate_host(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
             c.a = pow(t, 0.5f);
             blendGaussian(t * (max - min) + min, (max - min) / ticks / 3.0f, c);
         }
+    }
 
+    void addLinearGradient() {
+        for(int i = 0; i < metadata.size; i++) {
+            double t = (float)(i + 0.5f) / metadata.size;
+            Color c = tf_interpolate_host(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
+            c.a = t;
+            content_cpu[i] = c.blendTo(content_cpu[i]);
+        }
+    }
+
+    void upload() {
         cudaUpload<Color>(content_gpu, content_cpu, metadata.size);
     }
 
@@ -324,56 +140,19 @@ public:
     Color* content_gpu;
 };
 
-TransferFunction* TransferFunction::CreateTest(float min, float max, int ticks, bool is_log) {
-    return new TransferFunctionImpl(min, max, ticks, is_log);
+TransferFunction* TransferFunction::CreateGaussianTicks(float min, float max, int ticks, bool is_log) {
+    TransferFunctionImpl* r = new TransferFunctionImpl(min, max, is_log);
+    r->addGaussianTicks(ticks);
+    r->upload();
+    return r;
 }
 
-template<typename T>
-struct MirroredMemory {
-    T* cpu;
-    T* gpu;
-    size_t size, capacity;
-    MirroredMemory(int size_) {
-        size = size_;
-        capacity = size_;
-        cpu = new T[capacity];
-        gpu = cudaAllocate<T>(capacity);
-    }
-    T& operator [] (int index) { return cpu[index]; }
-    const T& operator [] (int index) const { return cpu[index]; }
-    void reserve(int count) {
-        if(capacity < count) {
-            capacity = count * 2;
-            delete [] cpu;
-            cudaDeallocate(gpu);
-            cpu = new T[capacity];
-            gpu = cudaAllocate<T>(capacity);
-        }
-    }
-    void allocate(size_t size_) {
-        reserve(size_);
-        size = size_;
-    }
-    void upload(T* pointer) {
-        cudaUpload(gpu, pointer, size);
-    }
-    void upload() {
-        cudaUpload(gpu, cpu, size);
-    }
-    void download() {
-        cudaDownload(cpu, gpu, size);
-    }
-    ~MirroredMemory() {
-        delete [] cpu;
-        cudaDeallocate(gpu);
-    }
-};
-
-#define BLOCK_COUNTER_MAX 62
-struct block_counter_t {
-    int count;
-    short blocks[32];
-};
+TransferFunction* TransferFunction::CreateLinearGradient(float min, float max, bool is_log) {
+    TransferFunctionImpl* r = new TransferFunctionImpl(min, max, is_log);
+    r->addLinearGradient();
+    r->upload();
+    return r;
+}
 
 struct transfer_function_t {
     Color* data;
@@ -381,7 +160,7 @@ struct transfer_function_t {
     float min, max;
     bool is_log;
 
-    inline CUDA_DEVICE Color get(float t) {
+    inline __device__ Color get(float t) {
         if(is_log) {
             if(t > 0) t = log(t);
             else t = min;
@@ -400,35 +179,12 @@ struct ray_marching_parameters_t {
     int pixel_count;
     int block_count, block_min, block_max;
     float blend_coefficient;
-    block_counter_t* block_counters;
 };
 
-inline CUDA_DEVICE __host__
-int intersectBox2(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar)
-{
-    // compute intersection of ray with all six bbox planes
-    Vector invR = Vector(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z);
-    Vector tbot = Vector((boxmin - origin).x * invR.x, (boxmin - origin).y * invR.y, (boxmin - origin).z * invR.z);
-    Vector ttop = Vector((boxmax - origin).x * invR.x, (boxmax - origin).y * invR.y, (boxmax - origin).z * invR.z);
-
-    // re-order intersections to find smallest and largest on each axis
-    Vector tmin(fminf(ttop.x, tbot.x), fminf(ttop.y, tbot.y), fminf(ttop.z, tbot.z));
-    Vector tmax(fmaxf(ttop.x, tbot.x), fmaxf(ttop.y, tbot.y), fmaxf(ttop.z, tbot.z));
-
-    // find the largest tmin and the smallest tmax
-    float largest_tmin = fmaxf(fmaxf(tmin.x, tmin.y), fmaxf(tmin.x, tmin.z));
-    float smallest_tmax = fminf(fminf(tmax.x, tmax.y), fminf(tmax.x, tmax.z));
-
-    *tnear = largest_tmin;
-    *tfar = smallest_tmax;
-
-    return smallest_tmax > largest_tmin;
-}
-
-inline CUDA_DEVICE __host__
-int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar) {
+__device__ __host__
+inline int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar) {
     float tmin = FLT_MIN, tmax = FLT_MAX;
-    float eps = 1e-6;
+    float eps = 1e-8;
     if(fabs(direction.x) > eps) {
         float tx1 = (boxmin.x - origin.x) / direction.x;
         float tx2 = (boxmax.x - origin.x) / direction.x;
@@ -458,91 +214,85 @@ int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, 
     return tmax > tmin;
 }
 
-inline CUDA_DEVICE float access_volume(const float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
+__device__
+inline float access_volume(const float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
     return data[iz * xsize * ysize + iy * xsize + ix];
 }
 
-CUDA_DEVICE float block_interploate(Vector pos, const BlockDescription& B, const float* data) {
-    // [ 0 | 1 | 2 | 3 ]
-    Vector p(
-        (pos.x - B.min.x) / (B.max.x - B.min.x) * (B.xsize - B.ghost_count * 2) - 0.5f + B.ghost_count,
-        (pos.y - B.min.y) / (B.max.y - B.min.y) * (B.ysize - B.ghost_count * 2) - 0.5f + B.ghost_count,
-        (pos.z - B.min.z) / (B.max.z - B.min.z) * (B.zsize - B.ghost_count * 2) - 0.5f + B.ghost_count
-    );
-    int ix = floor(p.x), iy = floor(p.y), iz = floor(p.z);
-    ix = clamp(ix, 0, B.xsize - 2);
-    iy = clamp(iy, 0, B.ysize - 2);
-    iz = clamp(iz, 0, B.zsize - 2);
-    float tx = p.x - ix, ty = p.y - iy, tz = p.z - iz;
-    float t000 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy, iz);
-    float t001 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy, iz + 1);
-    float t010 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy + 1, iz);
-    float t011 = access_volume(data, B.xsize, B.ysize, B.zsize, ix, iy + 1, iz + 1);
-    float t100 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy, iz);
-    float t101 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy, iz + 1);
-    float t110 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy + 1, iz);
-    float t111 = access_volume(data, B.xsize, B.ysize, B.zsize, ix + 1, iy + 1, iz + 1);
-    float t00 = t000 * (1.0f - tz) + t001 * tz;
-    float t01 = t010 * (1.0f - tz) + t011 * tz;
-    float t10 = t100 * (1.0f - tz) + t101 * tz;
-    float t11 = t110 * (1.0f - tz) + t111 * tz;
-    float t0 = t00 * (1.0f - ty) + t01 * ty;
-    float t1 = t10 * (1.0f - ty) + t11 * ty;
-    float t = t0 * (1.0 - tx) + t1 * tx;
-    return t;
-}
+struct block_interpolate_t {
+    const float* data;
+    float sx, sy, sz, tx, ty, tz;
+    int cxsize, cysize, czsize;
+    int ystride, zstride;
 
-CUDA_KERNEL void ray_block_test_kernel(ray_marching_parameters_t p) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx >= p.pixel_count) return;
-    Lens::Ray ray = p.rays[idx];
-    Vector pos = ray.origin;
-    Vector d = ray.direction;
-    int block_cursor = 0;
-    Color color(0, 0, 0, 0);
-    // Simple solution: fixed step size.
-    float kmax = 1e40;
-    block_counter_t bc;
-    bc.count = 0;
-    while(block_cursor < p.block_count) {
-        BlockDescription block = p.blocks[block_cursor];
-        float kin, kout;
-        if(intersectBox(pos, d, block.min, block.max, &kin, &kout) && kout >= 0) {
-            if(kin < 0) kin = 0;
-            if(kout > kmax) kout = kmax;
-            if(kin < kout) {
-                if(bc.count + 1 < BLOCK_COUNTER_MAX) {
-                    bc.blocks[bc.count] = block_cursor;
-                    bc.count += 1;
-                } else {
-                    bc.count += 1;
-                }
-            }
-        }
-        block_cursor += 1;
+    __device__
+    inline block_interpolate_t(const BlockDescription& block, const float* data_) {
+        data = data_;
+        sx = (block.xsize - block.ghost_count * 2.0f) / (block.max.x - block.min.x);
+        sy = (block.ysize - block.ghost_count * 2.0f) / (block.max.y - block.min.y);
+        sz = (block.zsize - block.ghost_count * 2.0f) / (block.max.z - block.min.z);
+        tx = (float)block.ghost_count - 0.5f - block.min.x * sx;
+        ty = (float)block.ghost_count - 0.5f - block.min.y * sy;
+        tz = (float)block.ghost_count - 0.5f - block.min.z * sz;
+        cxsize = block.xsize - 2;
+        cysize = block.ysize - 2;
+        czsize = block.zsize - 2;
+        ystride = block.xsize;
+        zstride = block.xsize * block.ysize;
     }
-    p.block_counters[idx] = bc;
-}
+
+    __device__
+    inline float interpolate(Vector pos) const {
+        float px = fmaf(pos.x, sx, tx);
+        float py = fmaf(pos.y, sy, ty);
+        float pz = fmaf(pos.z, sz, tz);
+        int ix = clampi(floor(px), 0, cxsize);
+        int iy = clampi(floor(py), 0, cysize);
+        int iz = clampi(floor(pz), 0, czsize);
+        float tx = px - ix, ty = py - iy, tz = pz - iz;
+        int idx = ix + ystride * iy + zstride * iz;
+        float t000 = data[idx];
+        float t001 = data[idx + zstride];
+        float t010 = data[idx + ystride];
+        float t011 = data[idx + ystride + zstride];
+        float t100 = data[idx + 1];
+        float t101 = data[idx + 1 + zstride];
+        float t110 = data[idx + 1 + ystride];
+        float t111 = data[idx + 1 + ystride + zstride];
+        float t00 = interp(t000, t001, tz);
+        float t01 = interp(t010, t011, tz);
+        float t10 = interp(t100, t101, tz);
+        float t11 = interp(t110, t111, tz);
+        float t0 = interp(t00, t01, ty);
+        float t1 = interp(t10, t11, ty);
+        float t = interp(t0, t1, tx);
+        return t;
+    }
+};
 
 struct ray_marching_kernel_blockinfo_t {
     float kin, kout;
     int index;
 };
 
-CUDA_KERNEL
+__global__
 void ray_marching_kernel(ray_marching_parameters_t p) {
+    // Pixel index.
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx >= p.pixel_count) return;
+
+    // Ray information.
     Lens::Ray ray = p.rays[idx];
     Vector pos = ray.origin;
     Vector d = ray.direction;
+
+    // Initial color (background color).
     Color color(0, 0, 0, 0);
-    // Simple solution: fixed step size.
-    float kmax = FLT_MAX;
-    float L = p.blend_coefficient;
 
     // Block intersection.
     ray_marching_kernel_blockinfo_t blockinfos[128];
     int blockinfos_count = 0;
+
     for(int block_cursor = p.block_min; block_cursor < p.block_max; block_cursor++) {
         BlockDescription block = p.blocks[block_cursor];
         float kin, kout;
@@ -556,6 +306,8 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
             }
         }
     }
+
+    // Bubble-sort blocks according to distance.
     for(;;) {
         bool swapped = false;
         int n = blockinfos_count;
@@ -571,6 +323,11 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
         if(!swapped) break;
     }
 
+    // Simple solution: fixed step size.
+    float kmax = FLT_MAX;
+    float L = p.blend_coefficient;
+
+    // Render blocks.
     for(int cursor = 0; cursor < blockinfos_count; cursor++) {
         BlockDescription block = p.blocks[blockinfos[cursor].index];
         float kin = blockinfos[cursor].kin;
@@ -580,22 +337,27 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
             // Render this block.
             float distance = kout - kin;
             float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            int steps = ceil(distance / voxel_size * 2);
+            int steps = ceil(distance / voxel_size);
             float step_size = distance / steps;
-            // Blending with RK4
-            Color c0 = p.tf.get(block_interploate(pos + d * kout, block, p.data + block.offset));
+
+            // Interpolate context.
+            block_interpolate_t block_access(block, p.data + block.offset);
+
+            // Blending with RK4.
+            Color c0 = p.tf.get(block_access.interpolate(pos + d * kout));
             float c0s = log(1.0f - c0.a) / L;
             c0.a = 1.0f;
             for(int i = steps - 1; i >= 0; i--) {
-                //printf("%g\n", block_interploate(pos + d * (kin + step_size * (i + 0.5f)), block, p.data + block.offset));
-                Color cm = p.tf.get(block_interploate(pos + d * (kin + step_size * ((float)i + 0.5f)), block, p.data + block.offset));
+                Color cm = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
                 float cms = log(1.0f - cm.a) / L;
                 cm.a = 1.0f;
-                Color c1 = p.tf.get(block_interploate(pos + d * (kin + step_size * i), block, p.data + block.offset));
+                Color c1 = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * i)));
                 float c1s = log(1.0f - c1.a) / L;
                 c1.a = 1.0f;
                 // Runge Kutta Order 4 method.
                 // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
+                //   y has premultiplied alpha.
+                //   c has non-premultiplied alpha.
                 Color k1 = (color - c0) * c0s;
                 Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cms;
                 Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
@@ -607,11 +369,15 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
             kmax = kin;
         }
     }
+
+    // Un-premultiply alpha channel.
     if(color.a != 0) {
         color.r /= color.a;
         color.g /= color.a;
         color.b /= color.a;
     } else color = Color(0, 0, 0, 0);
+
+    // Color output.
     p.pixels[idx] = color;
 }
 
@@ -623,14 +389,13 @@ public:
         volume_blocks(512),
         data(512 * 32 * 32 * 32),
         volume_data(512 * 34 * 34 * 34),
-        rays(1000 * 1000),
-        block_counters(1000 * 1000) {
-    }
+        rays(1000 * 1000) { }
 
     struct BlockCompare {
         BlockCompare(Vector center_) {
             center = center_;
         }
+
         bool operator () (const BlockDescription& a, const BlockDescription& b) {
             double d1 = ((a.min + a.max) / 2.0f - center).len2_double();
             double d2 = ((b.min + b.max) / 2.0f - center).len2_double();
@@ -661,8 +426,7 @@ public:
         image = image_;
     }
     virtual void render() {
-        // Sort blocks.
-        // TODO: origin not the same in OmniStereo mode.
+        // Sort blocks roughly.
         BlockCompare block_compare(lens->getCenter());
         sort(blocks.cpu, blocks.cpu + block_count, block_compare);
         blocks.upload();
@@ -670,8 +434,9 @@ public:
         // Prepare image.
         int pixel_count = image->getWidth() * image->getHeight();
         rays.allocate(pixel_count);
+
+        // Generate rays.
         lens->getRaysGPU(image->getWidth(), image->getHeight(), rays.gpu);
-        block_counters.allocate(pixel_count);
 
         int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
         if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
@@ -688,30 +453,17 @@ public:
         pms.tf.is_log = tf->getMetadata()->is_log_scale;
         pms.tf.size = tf->getMetadata()->size;
         pms.blend_coefficient = tf->getMetadata()->blend_coefficient;
-        pms.block_counters = block_counters.gpu;pms.block_min = 0;
         pms.block_max = block_count;
         pms.block_min = 0;
         pms.block_max = block_count;
-    #ifndef CPU_EMULATE
         ray_marching_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
         cudaThreadSynchronize();
-    #else
-        blockDim.x = CUDA_DEFAULT_THREADS;
-        for(int i = 0; i < cuda_blocks; i++) {
-            for(int j = 0; j < CUDA_DEFAULT_THREADS; j++) {
-                blockIdx.x = i;
-                threadIdx.x = j;
-                ray_marching_kernel(pms);
-            }
-        }
-    #endif
     }
 
     MirroredMemory<BlockDescription> blocks;
     MirroredMemory<float> volume_data, volume_blocks, data;
     MirroredMemory<Lens::Ray> rays;
     int block_count;
-    MirroredMemory<block_counter_t> block_counters;
     VolumeBlocks* volume;
     TransferFunction* tf;
     Lens* lens;

@@ -27,7 +27,7 @@ namespace allovolume {
         return x;
     }
 
-    bool writeImageFile(const char* path, const char* format, int width, int height, Color* pixels) {
+    bool Image::WriteImageFile(const char* path, const char* format, int width, int height, Color* pixels) {
         freeimage_initialize();
         if(strcmp(format, "png16") == 0) {
             FIBITMAP* bitmap = FreeImage_AllocateT(FIT_RGBA16, width, height, 64);

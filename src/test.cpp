@@ -251,10 +251,14 @@ float transform_color(float c) {
     return c;
 }
 
-void render_extracted_frame_as_png(int argc, char* argv[])
+void render_one_frame_as_png_super3d(int argc, char* argv[], bool is_extracted)
 {
-    volume = VolumeBlocks::LoadFromFile(argv[1]);
-    tf = TransferFunction::CreateTest(1e-3, 1e8, 20, true);
+    if(is_extracted) {
+        volume = VolumeBlocks::LoadFromFile(argv[1]);
+    } else {
+        volume = Dataset_FLASH_Create(argv[1], "/dens");
+    }
+    tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, 20, true);
     tf->getMetadata()->blend_coefficient = 1e10;
     // lens_origin = Vector(-0.1e10, 1e8, -1e8);
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
@@ -302,67 +306,21 @@ void render_extracted_frame_as_png(int argc, char* argv[])
     img->save(argv[2], "png16");
 }
 
-void render_one_frame_as_png(int argc, char* argv[])
+void render_one_frame_as_png_snshock(int argc, char* argv[], bool is_extracted)
 {
-    volume = Dataset_FLASH_Create(argv[1], "/dens");
-    tf = TransferFunction::CreateTest(1e-3, 1e8, 20, true);
-    tf->getMetadata()->blend_coefficient = 1e10;
-    // lens_origin = Vector(-0.1e10, 1e8, -1e8);
-    // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
-    Vector lens1_origin = Vector(0, 2e9, 0);
-    Lens* lens1 = Lens::CreateEquirectangular(lens1_origin, Vector(0, 0, 1), -lens1_origin.normalize());
-
-    Vector lens2_origin = Vector(0, 0, 2e9);
-    Lens* lens2 = Lens::CreateEquirectangular(lens2_origin, Vector(0, 1, 0), -lens2_origin.normalize());
-
-    renderer = VolumeRenderer::CreateGPU();
-
-    int image_size = 1600 * 800;
-    img = Image::Create(1600, 1600);
-    Image* img_render = Image::Create(1600, 800);
-
-    renderer->setVolume(volume);
-    renderer->setLens(lens1);
-    renderer->setTransferFunction(tf);
-    renderer->setImage(img_render);
-    renderer->render();
-    img_render->setNeedsDownload();
-    Color* pixels = img_render->getPixels();
-    for(int i = 0; i < image_size; i++) {
-        pixels[i].r = transform_color(pixels[i].r);
-        pixels[i].g = transform_color(pixels[i].g);
-        pixels[i].b = transform_color(pixels[i].b);
-        pixels[i].a = 1;
+    if(is_extracted) {
+        volume = VolumeBlocks::LoadFromFile(argv[1]);
+    } else {
+        volume = Dataset_FLASH_Create(argv[1], "/dens");
     }
-    memcpy(img->getPixels(), pixels, sizeof(Color) * image_size);
 
-    renderer->setLens(lens2);
-    renderer->setTransferFunction(tf);
-    renderer->setImage(img_render);
-    renderer->render();
-    img_render->setNeedsDownload();
-    pixels = img_render->getPixels();
-    for(int i = 0; i < image_size; i++) {
-        pixels[i].r = transform_color(pixels[i].r);
-        pixels[i].g = transform_color(pixels[i].g);
-        pixels[i].b = transform_color(pixels[i].b);
-        pixels[i].a = 1;
-    }
-    memcpy(img->getPixels() + image_size, pixels, sizeof(Color) * image_size);
-
-    img->save(argv[2], "png16");
-}
-
-void render_one_frame_as_png2()
-{
-    volume = Dataset_FLASH_Create("snshock_3d_hdf5_chk_0266", "/dens");
-    tf = TransferFunction::CreateTest(1e-26, 1e-21, 2, true);
-    tf->getMetadata()->blend_coefficient = 3e18;
+    tf = TransferFunction::CreateLinearGradient(1e-25, 1e-22, true);
+    tf->getMetadata()->blend_coefficient = 5e19;
     // lens_origin = Vector(-0.1e10, 1e8, -1e8);
     // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
     lens_origin = Vector(1.3e18, 1e16, 2e19);
     lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 1, 0), Vector(0, 0, -1));
-    img = Image::Create(800, 400);
+    img = Image::Create(1600, 800);
     renderer = VolumeRenderer::CreateGPU();
     renderer->setVolume(volume);
     renderer->setLens(lens);
@@ -371,16 +329,8 @@ void render_one_frame_as_png2()
 
     renderer->render();
     img->setNeedsDownload();
-    printf("%f %f %f %f\n", img->getPixels()->r, img->getPixels()->g, img->getPixels()->b, img->getPixels()->a);
 
-    for(int i = 0; i < 2; i++) {
-        double t0 = getPreciseTime();
-        renderer->render();
-        double render_time = getPreciseTime() - t0;
-        printf("Render time:  %.2lf ms\n", render_time * 1000.0);
-    }
-
-    img->save("output3.png", "png16");
+    img->save(argv[2], "png16");
 }
 
 void render_blocks() {
@@ -403,7 +353,7 @@ void convert_format() {
 
 int main(int argc, char* argv[]) {
     //convert_format();
-    render_extracted_frame_as_png(argc, argv);
+    render_one_frame_as_png_super3d(argc, argv, true);
     //render_one_frame_as_png2();
     //render_one_frame_as_png(argc, argv);
     //render_one_frame_as_png2();
@@ -423,7 +373,7 @@ int main(int argc, char* argv[]) {
 //     printf("%lf\n", sum);
 //     }
 
-//     // TransferFunction* tf = TransferFunction::CreateTest();
+//     // TransferFunction* tf = TransferFunction::CreateGaussianTicks();
 //     // Lens* lens = Lens::CreateEquirectangular(Vector(0, 0, 0), Vector(0, 0, 1), Vector(1, 0, 0));
 //     // Image* img = Image::Create(100, 100);
 
