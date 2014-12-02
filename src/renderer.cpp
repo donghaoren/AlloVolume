@@ -67,7 +67,7 @@ void server() {
         } else {
             printf("Sent 1 packet.\n");
         }
-        usleep(500000);
+        usleep(config.get<int>("zmq.delay", 5000000));
     }
 }
 
