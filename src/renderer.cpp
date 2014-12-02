@@ -18,6 +18,29 @@ struct packet_header_t {
     double time;
 };
 
+
+#ifndef _WIN32
+#include <sys/time.h>
+double getPreciseTime() {
+    timeval t;
+    gettimeofday(&t, 0);
+    double s = t.tv_sec;
+    s += t.tv_usec / 1000000.0;
+    return s;
+}
+#else
+#include <windows.h>
+double getPreciseTime() {
+    LARGE_INTEGER data, frequency;
+    QueryPerformanceCounter(&data);
+    QueryPerformanceFrequency(&frequency);
+    return (double)data.QuadPart / (double)frequency.QuadPart;
+    //return 0;
+}
+#endif
+
+void my_free(void *data, void *hint) { free (data); }
+
 void server() {
     void* zmq_context = zmq_ctx_new();
     void* socket = zmq_socket(zmq_context, ZMQ_PUB);
@@ -31,14 +54,16 @@ void server() {
         printf("r = %d, %s\n", r, zmq_strerror(errno));
     }
     int test_size = config.get<int>("renderer.packet_size");
-    char* data = new char[test_size];
-    for(int i = 0; i < test_size; i++) {
-        data[i] = (char)i;
-    }
+    int seq = 0;
     while(1) {
-        int r = zmq_send(socket, data, test_size, 0);
+        packet_header_t* data = (packet_header_t*)malloc(test_size);
+        data->sequence_number = seq++;
+        data->time = getPreciseTime();
+        zmq_msg_t msg;
+        zmq_msg_init_data(&msg, data, test_size, my_free, 0);
+        int r = zmq_msg_send(&msg, socket, 0);
         if(r < 0) {
-            printf("r = %d, %s\n", r, zmq_strerror(errno));
+            printf("r = %d, %s\n", r, zmq_strerror(zmq_errno()));
         } else {
             printf("Sent 1 packet.\n");
         }
@@ -61,19 +86,16 @@ void client() {
     int test_size = config.get<int>("renderer.packet_size");
     char* data = new char[test_size];
     while(1) {
-        int r = zmq_recv(socket, data, test_size, 0);
+        zmq_msg_t msg;
+        zmq_msg_init(&msg);
+        int r = zmq_msg_recv(&msg, socket, 0);
         if(r < 0) {
-            printf("r = %d, %s\n", r, zmq_strerror(errno));
+            printf("r = %d, %s\n", r, zmq_strerror(zmq_errno()));
         } else {
-            bool failure = false;
-            for(int i = 0; i < test_size; i++) {
-                if(data[i] != (char)i) failure = true;
-            }
-            if(failure)
-                printf("Packet Failed.\n");
-            else
-                printf("Packet: %d\n", test_size);
+            packet_header_t* data = (packet_header_t*)zmq_msg_data(&msg);
+            printf("Message: %10.5lf - %d\n", data->time, data->sequence_number);
         }
+        zmq_msg_close(&msg);
     }
 }
 
