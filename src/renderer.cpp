@@ -13,11 +13,17 @@ using namespace std;
 
 ConfigParser config;
 
+struct packet_header_t {
+    int sequence_number;
+    double time;
+};
+
 void server() {
     void* zmq_context = zmq_ctx_new();
     void* socket = zmq_socket(zmq_context, ZMQ_PUB);
     int value;
     value = config.get<int>("zmq.sndhwm", 10000); zmq_setsockopt(socket, ZMQ_SNDHWM, &value, sizeof(int));
+    value = config.get<int>("zmq.sndbuf", 0); zmq_setsockopt(socket, ZMQ_SNDBUF, &value, sizeof(int));
     value = config.get<int>("zmq.rate", 10000000); zmq_setsockopt(socket, ZMQ_RATE, &value, sizeof(int));
 
     int r = zmq_bind(socket, config.get<string>("renderer.broadcast").c_str());
@@ -45,6 +51,7 @@ void client() {
     void* socket = zmq_socket(zmq_context, ZMQ_SUB);
     int value;
     value = config.get<int>("zmq.rcvhwm", 10000); zmq_setsockopt(socket, ZMQ_RCVHWM, &value, sizeof(int));
+    value = config.get<int>("zmq.rcvbuf", 0); zmq_setsockopt(socket, ZMQ_RCVBUF, &value, sizeof(int));
     value = config.get<int>("zmq.rate", 10000000); zmq_setsockopt(socket, ZMQ_RATE, &value, sizeof(int));
     int r = zmq_connect(socket, config.get<string>("renderer.broadcast").c_str());
     if(r < 0) {
