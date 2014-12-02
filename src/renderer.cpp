@@ -85,6 +85,7 @@ void client() {
     zmq_setsockopt(socket, ZMQ_SUBSCRIBE, "", 0);
     int test_size = config.get<int>("renderer.packet_size");
     char* data = new char[test_size];
+    double last_time = 0;
     while(1) {
         zmq_msg_t msg;
         zmq_msg_init(&msg);
@@ -93,7 +94,8 @@ void client() {
             printf("r = %d, %s\n", r, zmq_strerror(zmq_errno()));
         } else {
             packet_header_t* data = (packet_header_t*)zmq_msg_data(&msg);
-            printf("Message: %10.5lf - %d\n", data->time, data->sequence_number);
+            printf("Message: %10.5lf - %10.5lf - %10.5lf - %d\n", data->time, data->time - getPreciseTime(), data->time - last_time, data->sequence_number);
+            last_time = data->time;
         }
         zmq_msg_close(&msg);
     }
