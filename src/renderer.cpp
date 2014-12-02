@@ -57,7 +57,7 @@ void server() {
     int seq = 0;
     while(1) {
         packet_header_t* data = (packet_header_t*)malloc(test_size);
-        data->sequence_number = seq++;
+        data->sequence_number = seq;
         data->time = getPreciseTime();
         zmq_msg_t msg;
         zmq_msg_init_data(&msg, data, test_size, my_free, 0);
@@ -65,9 +65,10 @@ void server() {
         if(r < 0) {
             printf("r = %d, %s\n", r, zmq_strerror(zmq_errno()));
         } else {
-            printf("Sent 1 packet.\n");
+            printf("Sent 1 packet %d.\n", seq);
         }
         usleep(config.get<int>("zmq.delay", 5000000));
+        seq++;
     }
 }
 
