@@ -67,7 +67,6 @@ void client() {
             else
                 printf("Packet: %d\n", test_size);
         }
-        sleep(1);
     }
 }
 
