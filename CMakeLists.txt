@@ -21,6 +21,8 @@ FIND_PACKAGE ( HDF5 REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( FreeImage REQUIRED )
 
+SET ( CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_20,code=compute_20 -gencode arch=compute_30,code=sm_30 )
+
 LINK_DIRECTORIES (
   ${ZeroMQ_LIBRARY_DIRS}
   ${HDF5_LIBRARY_DIRS}
