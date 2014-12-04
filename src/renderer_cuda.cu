@@ -278,8 +278,8 @@ struct ray_marching_kernel_blockinfo_t {
 __global__
 void ray_marching_kernel(ray_marching_parameters_t p) {
     // Pixel index.
-    int px = blockIdx.x * 8 + threadIdx.x;
-    int py = blockIdx.y * 8 + threadIdx.y;
+    int px = blockIdx.x * blockDim.x + threadIdx.x;
+    int py = blockIdx.y * blockDim.y + threadIdx.y;
     if(px >= p.width || py >= p.height) return;
     int idx = py * p.width + px;
 
@@ -365,6 +365,7 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
                 Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
                 Color k4 = (color + k3 * (step_size) - c1) * c1s;
                 color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
+
                 c0 = c1;
                 c0s = c1s;
             }
@@ -462,7 +463,9 @@ public:
         pms.block_max = block_count;
         pms.block_min = 0;
         pms.block_max = block_count;
-        ray_marching_kernel<<<dim3(diviur(image->getWidth(), 8), diviur(image->getWidth(), 8), 1), dim3(8, 8, 1)>>>(pms);
+        int blockdim_x = 8;
+        int blockdim_y = 8;
+        ray_marching_kernel<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getWidth(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         cudaThreadSynchronize();
     }
 
