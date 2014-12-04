@@ -361,7 +361,7 @@ void speed_test() {
     Lens* lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), -lens_origin.normalize());
     renderer = VolumeRenderer::CreateGPU();
 
-    int sizes[] = { 100, 200, 300, 400, -1, 600, 700, 800, 900, 1000, -1 };
+    int sizes[] = { 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, -1 };
     for(int index = 0; ; index++) {
         int sz = sizes[index];
         if(sz < 0) break;
