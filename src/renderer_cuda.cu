@@ -246,27 +246,26 @@ struct block_interpolate_t {
         float px = fmaf(pos.x, sx, tx);
         float py = fmaf(pos.y, sy, ty);
         float pz = fmaf(pos.z, sz, tz);
+
         int ix = clampi(floor(px), 0, cxsize);
         int iy = clampi(floor(py), 0, cysize);
         int iz = clampi(floor(pz), 0, czsize);
-        float tx = px - ix, ty = py - iy, tz = pz - iz;
+
+        float tx = px - ix;
+        float ty = py - iy;
+        float tz = pz - iz;
+
         int idx = ix + ystride * iy + zstride * iz;
-        float t000 = data[idx];
-        float t001 = data[idx + zstride];
-        float t010 = data[idx + ystride];
-        float t011 = data[idx + ystride + zstride];
-        float t100 = data[idx + 1];
-        float t101 = data[idx + 1 + zstride];
-        float t110 = data[idx + 1 + ystride];
-        float t111 = data[idx + 1 + ystride + zstride];
-        float t00 = interp(t000, t001, tz);
-        float t01 = interp(t010, t011, tz);
-        float t10 = interp(t100, t101, tz);
-        float t11 = interp(t110, t111, tz);
+
+        float t00 = interp(data[idx], data[idx + zstride], tz);
+        float t01 = interp(data[idx + ystride], data[idx + ystride + zstride], tz);
         float t0 = interp(t00, t01, ty);
+
+        float t10 = interp(data[idx + 1], data[idx + 1 + zstride], tz);
+        float t11 = interp(data[idx + 1 + ystride], data[idx + 1 + ystride + zstride], tz);
         float t1 = interp(t10, t11, ty);
-        float t = interp(t0, t1, tx);
-        return t;
+
+        return interp(t0, t1, tx);
     }
 };
 
@@ -281,15 +280,15 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
     int px = blockIdx.x * blockDim.x + threadIdx.x;
     int py = blockIdx.y * blockDim.y + threadIdx.y;
     if(px >= p.width || py >= p.height) return;
-    int idx = py * p.width + px;
+    register int idx = py * p.width + px;
 
     // Ray information.
     Lens::Ray ray = p.rays[idx];
-    Vector pos = ray.origin;
-    Vector d = ray.direction;
+    register Vector pos = ray.origin;
+    register Vector d = ray.direction;
 
     // Initial color (background color).
-    Color color(0, 0, 0, 0);
+    register Color color(0, 0, 0, 0);
 
     // Block intersection.
     ray_marching_kernel_blockinfo_t blockinfos[128];
@@ -463,8 +462,8 @@ public:
         pms.block_max = block_count;
         pms.block_min = 0;
         pms.block_max = block_count;
-        int blockdim_x = 16;
-        int blockdim_y = 12;
+        int blockdim_x = 8; // 8x8 is the optimal block size.
+        int blockdim_y = 8;
         ray_marching_kernel<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getWidth(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         cudaThreadSynchronize();
     }
