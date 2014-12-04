@@ -351,13 +351,50 @@ void convert_format() {
     delete volume;
 }
 
+void speed_test() {
+    volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
+    tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, 20, true);
+    tf->getMetadata()->blend_coefficient = 1e10;
+    // lens_origin = Vector(-0.1e10, 1e8, -1e8);
+    // lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), Vector(1, 0, 0));
+    Vector lens_origin = Vector(0, 2e9, 0);
+    Lens* lens = Lens::CreateEquirectangular(lens_origin, Vector(0, 0, 1), -lens_origin.normalize());
+    renderer = VolumeRenderer::CreateGPU();
+
+    int sizes[] = { 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, -1 };
+    for(int index = 0; ; index++) {
+        int sz = sizes[index];
+        if(sz < 0) break;
+        Image* img_render = Image::Create(sz, sz / 2);
+
+        renderer->setVolume(volume);
+        renderer->setLens(lens);
+        renderer->setTransferFunction(tf);
+        renderer->setImage(img_render);
+
+        for(int i = 0; i < 5; i++) {
+            double t0 = getPreciseTime();
+            renderer->render();
+            img_render->setNeedsDownload();
+            img_render->getPixels()[0].r = 1;
+
+            double t1 = getPreciseTime();
+            printf("%d x %d, %10.5lf s, %10.5lfus/pixel\n", img_render->getWidth(), img_render->getHeight(), t1 - t0, (t1 - t0) / img_render->getWidth() / img_render->getHeight() * 1e6);
+        }
+
+        delete img_render;
+    }
+}
+
 int main(int argc, char* argv[]) {
     //convert_format();
-    render_one_frame_as_png_super3d(argc, argv, true);
+    //render_one_frame_as_png_super3d(argc, argv, true);
     //render_one_frame_as_png2();
     //render_one_frame_as_png(argc, argv);
     //render_one_frame_as_png2();
     //render_blocks();
+
+    speed_test();
 }
 
 // int main() {
