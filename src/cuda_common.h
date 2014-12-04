@@ -1,5 +1,3 @@
-#define CUDA_DEFAULT_THREADS 64
-
 namespace allovolume {
 
     class runtime_error { };

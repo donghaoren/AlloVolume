@@ -64,13 +64,14 @@ public:
         }
     }
     virtual void getRaysGPU(int width, int height, Ray* rays) {
+        int number_of_threads = 64;
         Vector ex = direction.normalize();
         Vector ey = up.cross(ex).normalize();
         Vector ez = ex.cross(ey).normalize();
         int pixel_count = width * height;
-        int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
-        if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
-        get_rays_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
+        int cuda_blocks = pixel_count / number_of_threads;
+        if(pixel_count % number_of_threads != 0) cuda_blocks += 1;
+        get_rays_kernel<<<cuda_blocks, number_of_threads>>>(ex, ey, ez, origin, width, height, pixel_count, rays);
     }
 
     Vector origin, up, direction;

@@ -176,7 +176,7 @@ struct ray_marching_parameters_t {
 
     const BlockDescription* blocks;
     const float* data;
-    int pixel_count;
+    int width, height;
     int block_count, block_min, block_max;
     float blend_coefficient;
 };
@@ -278,8 +278,10 @@ struct ray_marching_kernel_blockinfo_t {
 __global__
 void ray_marching_kernel(ray_marching_parameters_t p) {
     // Pixel index.
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx >= p.pixel_count) return;
+    int px = blockIdx.x * 8 + threadIdx.x;
+    int py = blockIdx.y * 8 + threadIdx.y;
+    if(px >= p.width || py >= p.height) return;
+    int idx = py * p.width + px;
 
     // Ray information.
     Lens::Ray ray = p.rays[idx];
@@ -381,6 +383,11 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
     p.pixels[idx] = color;
 }
 
+int diviur(int a, int b) {
+    if(a % b == 0) return a / b;
+    return a / b + 1;
+}
+
 class VolumeRendererImpl : public VolumeRenderer {
 public:
 
@@ -438,14 +445,13 @@ public:
         // Generate rays.
         lens->getRaysGPU(image->getWidth(), image->getHeight(), rays.gpu);
 
-        int cuda_blocks = pixel_count / CUDA_DEFAULT_THREADS;
-        if(pixel_count % CUDA_DEFAULT_THREADS != 0) cuda_blocks += 1;
         ray_marching_parameters_t pms;
         pms.rays = rays.gpu;
         pms.pixels = image->getPixelsGPU();
         pms.blocks = blocks.gpu;
         pms.data = data.gpu;
-        pms.pixel_count = pixel_count;
+        pms.width = image->getWidth();
+        pms.height = image->getHeight();
         pms.block_count = block_count;
         pms.tf.data = tf->getContentGPU();
         pms.tf.min = tf->getMetadata()->input_min;
@@ -456,7 +462,7 @@ public:
         pms.block_max = block_count;
         pms.block_min = 0;
         pms.block_max = block_count;
-        ray_marching_kernel<<<cuda_blocks, CUDA_DEFAULT_THREADS>>>(pms);
+        ray_marching_kernel<<<dim3(diviur(image->getWidth(), 8), diviur(image->getWidth(), 8), 1), dim3(8, 8, 1)>>>(pms);
         cudaThreadSynchronize();
     }
 
