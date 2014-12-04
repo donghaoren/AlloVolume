@@ -463,8 +463,8 @@ public:
         pms.block_max = block_count;
         pms.block_min = 0;
         pms.block_max = block_count;
-        int blockdim_x = 8;
-        int blockdim_y = 8;
+        int blockdim_x = 16;
+        int blockdim_y = 12;
         ray_marching_kernel<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getWidth(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         cudaThreadSynchronize();
     }
