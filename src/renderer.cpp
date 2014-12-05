@@ -118,9 +118,22 @@ public:
         }
         //glfwWindowHint(GLFW_SAMPLES, 4); // 4x antialiasing
         // Open a window and create its OpenGL context
-        const GLFWvidmode * mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+        int monitor_count = 0;
+        GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
+        int screen_width = 0, screen_height = 0;
+        for(int i = 0; i < monitor_count; i++) {
+            int x, y;
+            const GLFWvidmode *mode = glfwGetVideoMode(monitors[i]);
+            glfwGetMonitorPos(monitors[i], &x, &y);
+            x += mode->width;
+            y += mode->height;
+            screen_width = max(screen_width, x);
+            screen_height = max(screen_height, y);
+        }
         //window = glfwCreateWindow(mode->width, mode->height, "Allosphere Volume Renderer", glfwGetPrimaryMonitor(), NULL);
-        window = glfwCreateWindow(mode->width, mode->height, "Allosphere Volume Renderer", NULL, NULL);
+        glfwWindowHint(GLFW_DECORATED, GL_FALSE);
+        window = glfwCreateWindow(screen_width, screen_width, "Allosphere Volume Renderer", NULL, NULL);
+        glfwSetWindowPos(window, 0, 0);
 
         if(window == NULL) {
             fprintf(stderr, "Failed to open GLFW window.\n");
