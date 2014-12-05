@@ -43,9 +43,18 @@ struct Vector {
     }
 };
 
+struct Vector4 {
+    float x, y, z, w;
+};
+
 GPUEnable float num_min(float a, float b) { return a < b ? a : b; }
 GPUEnable float num_max(float a, float b) { return a > b ? a : b; }
 GPUEnable float clamp01(float a) { return a < 0 ? 0 : (a > 1 ? 1 : a); }
+// integer division upper round.
+inline int diviur(int a, int b) {
+    if(a % b == 0) return a / b;
+    return a / b + 1;
+}
 
 struct Color {
     float r, g, b, a;

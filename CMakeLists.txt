@@ -49,6 +49,8 @@ CUDA_ADD_LIBRARY ( renderer_cuda
     src/lens.cu
     src/image_codec.cpp
     src/image.cpp
+    src/allosphere_calibration.cpp
+    src/allosphere_lens.cu
 )
 
 ADD_EXECUTABLE ( test
@@ -61,6 +63,7 @@ ADD_EXECUTABLE ( dataset_converter
 
 ADD_EXECUTABLE ( renderer
     src/renderer.cpp
+    src/allosync.cpp
 )
 
 IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" )
@@ -87,6 +90,7 @@ TARGET_LINK_LIBRARIES ( test
     ${FREEIMAGE_LIBRARIES}
     ${HDF5_LIBRARIES}
     ${OPENGL_LIBRARIES}
+    ${YAMLCPP_LIBRARIES}
 )
 
 TARGET_LINK_LIBRARIES ( renderer

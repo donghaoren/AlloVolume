@@ -1,5 +1,7 @@
 #include "dataset.h"
 #include "renderer.h"
+#include "allosphere_calibration.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -380,10 +382,35 @@ void speed_test() {
 
             double t1 = getPreciseTime();
             printf("%d x %d, %10.5lf s, %10.5lfus/pixel\n", img_render->getWidth(), img_render->getHeight(), t1 - t0, (t1 - t0) / img_render->getWidth() / img_render->getHeight() * 1e6);
+            if(i == 0) {
+                char fname[256];
+                sprintf(fname, "test-%dx%d.png", img_render->getWidth(), img_render->getHeight());
+                img_render->save(fname, "png16");
+            }
         }
 
         delete img_render;
     }
+}
+
+
+
+void allosphere_calibration_test() {
+    AllosphereCalibration* calib = AllosphereCalibration::Load("/Users/donghao/calibration-current");
+    AllosphereLens* lens = AllosphereCalibration::CreateLens(&calib->getRenderer("gr02")->projections[1]);
+    volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
+    tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, 20, true);
+    tf->getMetadata()->blend_coefficient = 1e10;
+    renderer = VolumeRenderer::CreateGPU();
+    Image* img_render = Image::Create(480, 320);
+    renderer->setVolume(volume);
+    renderer->setLens(lens);
+    renderer->setTransferFunction(tf);
+    renderer->setImage(img_render);
+    renderer->render();
+    lens->performBlend(img_render);
+    img_render->setNeedsDownload();
+    img_render->save("sphere.png", "png16");
 }
 
 int main(int argc, char* argv[]) {
@@ -394,7 +421,7 @@ int main(int argc, char* argv[]) {
     //render_one_frame_as_png2();
     //render_blocks();
 
-    speed_test();
+    allosphere_calibration_test();
 }
 
 // int main() {

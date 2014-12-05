@@ -383,11 +383,6 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
     p.pixels[idx] = color;
 }
 
-int diviur(int a, int b) {
-    if(a % b == 0) return a / b;
-    return a / b + 1;
-}
-
 class VolumeRendererImpl : public VolumeRenderer {
 public:
 
