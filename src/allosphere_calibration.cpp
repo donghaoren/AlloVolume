@@ -95,6 +95,7 @@ public:
         if(renderers.find(myhostname) != renderers.end()) {
             return &renderers[myhostname];
         } else {
+            fprintf(stderr, "AllosphereCalibration: Cannot find configuration for '%s', using the first one as fallback.", myhostname);
             return &renderers.begin()->second;
         }
     }
