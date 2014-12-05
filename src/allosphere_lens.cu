@@ -11,10 +11,10 @@ __global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int 
     if(px < width && py < height) {
         float fx = ((float)px + 0.5f) / (float)width;
         float fy = ((float)py + 0.5f) / (float)height;
-        float4 pos = tex2D(warp_texture, fx, fy);
+        float4 pos = tex2D(warp_texture, fx, 1.0f - fy);
         Lens::Ray r;
         r.origin = origin;
-        r.direction = Vector(pos.x, pos.y, pos.z).normalize();
+        r.direction = Vector(pos.y, pos.z, pos.x).normalize();
         rays[py * width + px] = r;
     }
 }
