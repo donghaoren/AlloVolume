@@ -58,6 +58,18 @@ public:
         sync->sendMessage(&header, sizeof(MessageHeader));
     }
 
+    void barrier() {
+        waiting_for_barrier = true;
+        sync->sendBarrier();
+        while(waiting_for_barrier) { usleep(1000); }
+    }
+
+    virtual void onBarrierClear(SyncSystem* sync, size_t sequence_id) {
+        waiting_for_barrier = false;
+    }
+
+    volatile bool waiting_for_barrier = false;
+
     SyncSystem* sync;
 };
 
@@ -181,9 +193,6 @@ public:
         printf("Barrier: %llu\n", sequence_id);
         sync->clearBarrier(sequence_id);
     }
-    virtual void onBarrierClear(SyncSystem* sync, size_t sequence_id) {
-        printf("Barrier Clear: %llu\n", sequence_id);
-    }
 
     SyncSystem* sync;
     AllosphereCalibration* calibration;
@@ -217,6 +226,7 @@ int main(int argc, char* argv[]) {
                 controller.render();
             }
             if(in == "present") {
+                controller.barrier();
                 controller.present();
             }
         }
