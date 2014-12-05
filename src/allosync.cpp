@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <pthread.h>
+#include <string.h>
 #include "configparser.h"
 #include "allosync.h"
 

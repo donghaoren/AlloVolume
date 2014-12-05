@@ -86,7 +86,7 @@ public:
         volume = NULL;
         for(int i = 0; i < render_slave->num_projections; i++) {
             lenses.push_back(AllosphereCalibration::CreateLens(&render_slave->projections[i]));
-            images.push_back(Image::Create(100, 100));
+            images.push_back(Image::Create(960, 640));
         }
         renderer = VolumeRenderer::CreateGPU();
         tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, 20, true);
@@ -130,6 +130,7 @@ public:
             screen_width = max(screen_width, x);
             screen_height = max(screen_height, y);
         }
+        printf("Screen: %d %d\n", screen_width, screen_height);
         //window = glfwCreateWindow(mode->width, mode->height, "Allosphere Volume Renderer", glfwGetPrimaryMonitor(), NULL);
         glfwWindowHint(GLFW_DECORATED, GL_FALSE);
         window = glfwCreateWindow(screen_width, screen_width, "Allosphere Volume Renderer", NULL, NULL);
@@ -151,6 +152,7 @@ public:
         GLint windowWidth, windowHeight;
         glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
         glViewport(0, 0, windowWidth, windowHeight);
+        printf("framebuffer: %d %d\n", windowWidth, windowHeight);
 
         // Draw stuff
         glClearColor(0, 0, 0, 0);
