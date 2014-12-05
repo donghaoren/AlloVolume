@@ -5,7 +5,7 @@ namespace allovolume {
 texture<float4, 2, cudaReadModeElementType> warp_texture;
 texture<float, 2, cudaReadModeElementType> blend_texture;
 
-__global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int height) {
+__global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int height, Vector origin) {
     int px = threadIdx.x + blockDim.x * blockIdx.x;
     int py = threadIdx.y + blockDim.y * blockIdx.y;
     if(px < width && py < height) {
@@ -13,7 +13,7 @@ __global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int 
         float fy = ((float)py + 0.5f) / (float)height;
         float4 pos = tex2D(warp_texture, fx, fy);
         Lens::Ray r;
-        r.origin = Vector(0, 0, 0);
+        r.origin = origin;
         r.direction = Vector(pos.x, pos.y, pos.z).normalize();
         rays[py * width + px] = r;
     }
@@ -59,14 +59,18 @@ public:
         blend_texture.addressMode[1] = cudaAddressModeClamp;
     }
 
-    virtual void setParameter(const char* name, void* value) { }
+    virtual void setParameter(const char* name, void* value) {
+        if(strcmp(name, "origin") == 0) {
+            origin = *(Vector*)value;
+        }
+    }
     virtual Vector getCenter() {
         return Vector(0, 0, 0);
     }
     virtual void getRays(int width, int height, Ray* rays) { }
     virtual void getRaysGPU(int width, int height, Ray* rays) {
         cudaBindTextureToArray(warp_texture, warp_data, channel_description);
-        allosphere_lens_get_rays_kernel<<< dim3(diviur(width, 8), diviur(height, 8), 1), dim3(8, 8, 1) >>>(rays, width, height);
+        allosphere_lens_get_rays_kernel<<< dim3(diviur(width, 8), diviur(height, 8), 1), dim3(8, 8, 1) >>>(rays, width, height, origin);
         cudaThreadSynchronize();
         cudaUnbindTexture(warp_texture);
     }
@@ -82,6 +86,8 @@ public:
 
     virtual ~AllosphereLensImpl() {
     }
+
+    Vector origin;
 
     cudaArray* warp_data;
     cudaChannelFormatDesc channel_description;

@@ -25,6 +25,7 @@ using namespace allovolume;
 
 struct MessageHeader {
     unsigned int type;
+    Vector origin;
 };
 
 class Controller : public SyncSystem::Delegate {
@@ -62,6 +63,13 @@ public:
         waiting_for_barrier = true;
         sync->sendBarrier();
         while(waiting_for_barrier) { usleep(1000); }
+    }
+
+    void setPose(Vector origin) {
+        MessageHeader header;
+        header.type = MESSAGE_SetPose;
+        header.origin = origin;
+        sync->sendMessage(&header, sizeof(MessageHeader));
     }
 
     virtual void onBarrierClear(SyncSystem* sync, size_t sequence_id) {
@@ -200,6 +208,11 @@ public:
                 glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, images[i]->getWidth(), images[i]->getHeight(), 0, GL_RGBA, GL_FLOAT, images[i]->getPixels());
             }
         }
+        if(header->type == MESSAGE_SetPose) {
+            for(int i = 0; i < render_slave->num_projections; i++) {
+                lenses[i]->setParameter("origin", &header->origin);
+            }
+        }
         if(header->type == MESSAGE_Present) {
             display();
         }
@@ -236,6 +249,12 @@ int main(int argc, char* argv[]) {
                 VolumeBlocks* vol = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
                 controller.loadVolume(vol);
                 delete vol;
+            }
+            if(in == "setpose") {
+                char* input = readline("Pose: ");
+                Vector origin;
+                sscanf(input, "%f %f %f", &origin.x, &origin.y, &origin.z);
+                controller.setPose(origin);
             }
             if(in == "render") {
                 controller.render();
