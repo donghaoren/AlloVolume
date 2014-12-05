@@ -92,7 +92,11 @@ public:
         if(hostname) return &renderers[hostname];
         char myhostname[256];
         gethostname(myhostname, 256);
-        return &renderers[myhostname];
+        if(renderers.find(myhostname) != renderers.end()) {
+            return &renderers[myhostname];
+        } else {
+            return &renderers.begin()->second;
+        }
     }
 
     map<string, RenderSlave> renderers;

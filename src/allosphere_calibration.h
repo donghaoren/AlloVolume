@@ -27,7 +27,7 @@ namespace allovolume {
             Projection* projections;
         };
 
-        virtual RenderSlave* getRenderer(const char* hostname) = 0;
+        virtual RenderSlave* getRenderer(const char* hostname = NULL) = 0;
 
         virtual ~AllosphereCalibration() { }
 

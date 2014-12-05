@@ -32,6 +32,11 @@ public:
     static void WriteToFile(VolumeBlocks* dataset, const char* path);
     static VolumeBlocks* LoadFromFile(const char* path);
 
+    static VolumeBlocks* LoadFromBuffer(const void* buffer, size_t length);
+    static size_t WriteToBufferSize(VolumeBlocks* dataset);
+    static void WriteToBuffer(VolumeBlocks* dataset, void* buffer, size_t length);
+
+
     virtual ~VolumeBlocks() { }
 };
 

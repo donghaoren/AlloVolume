@@ -21,6 +21,7 @@ FIND_PACKAGE ( HDF5 REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( FreeImage REQUIRED )
 
+
 SET ( CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 )
 
 LINK_DIRECTORIES (
@@ -71,10 +72,16 @@ IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" )
     TARGET_LINK_LIBRARIES ( test
       ${GLFW_LIBRARY}
     )
+    TARGET_LINK_LIBRARIES ( renderer
+      ${GLFW_LIBRARY}
+    )
 ENDIF ( )
 
 IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
     TARGET_LINK_LIBRARIES ( test
+      ${GLFW_STATIC_LIBRARIES}
+    )
+    TARGET_LINK_LIBRARIES ( renderer
       ${GLFW_STATIC_LIBRARIES}
     )
 ENDIF ( )
@@ -100,4 +107,6 @@ TARGET_LINK_LIBRARIES ( renderer
     ${HDF5_LIBRARIES}
     ${ZeroMQ_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+    readline
 )
