@@ -133,7 +133,7 @@ public:
         printf("Screen: %d %d\n", screen_width, screen_height);
         //window = glfwCreateWindow(mode->width, mode->height, "Allosphere Volume Renderer", glfwGetPrimaryMonitor(), NULL);
         glfwWindowHint(GLFW_DECORATED, GL_FALSE);
-        window = glfwCreateWindow(screen_width, screen_width, "Allosphere Volume Renderer", NULL, NULL);
+        window = glfwCreateWindow(screen_width, screen_height, "Allosphere Volume Renderer", NULL, NULL);
         glfwSetWindowPos(window, 0, 0);
 
         if(window == NULL) {
