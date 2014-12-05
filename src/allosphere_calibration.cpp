@@ -93,6 +93,7 @@ public:
         char myhostname[256];
         gethostname(myhostname, 256);
         if(renderers.find(myhostname) != renderers.end()) {
+            fprintf(stderr, "AllosphereCalibration: Hostname = '%s'.", myhostname);
             return &renderers[myhostname];
         } else {
             fprintf(stderr, "AllosphereCalibration: Cannot find configuration for '%s', using the first one as fallback.", myhostname);
