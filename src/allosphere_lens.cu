@@ -57,6 +57,8 @@ public:
         blend_texture.filterMode = cudaFilterModeLinear;
         blend_texture.addressMode[0] = cudaAddressModeClamp;
         blend_texture.addressMode[1] = cudaAddressModeClamp;
+
+        origin = Vector(0, 0, 0);
     }
 
     virtual void setParameter(const char* name, void* value) {
