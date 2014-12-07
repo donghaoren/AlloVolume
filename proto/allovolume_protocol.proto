@@ -1,0 +1,58 @@
+package allovolume.protocol;
+
+message Pose {
+    required float x  = 1;
+    required float y  = 2;
+    required float z  = 3;
+    required float qx = 4;
+    required float qy = 5;
+    required float qz = 6;
+    required float qw = 7;
+}
+
+message TransferFunction {
+    required string scale      = 1;
+    required float domain_min  = 2;
+    required float domain_max  = 3;
+    required bytes content     = 4;
+}
+
+message RendererBroadcast {
+    enum RequestType {
+        LoadVolume           = 0;
+        LoadVolumeFromFile   = 1;
+        SetPose              = 2;
+        SetTransferFunction  = 3;
+        Render               = 4;
+        Present              = 5;
+    }
+
+    required RequestType type = 1;
+
+    optional string volume_filename = 2;
+    optional bytes volume_data      = 3;
+
+    optional TransferFunction transfer_function = 4;
+
+    optional Pose pose = 5;
+}
+
+message RendererCommand {
+    enum RequestType {
+        LoadVolume           = 0;
+        LoadVolumeFromFile   = 1;
+        SetPose              = 2;
+        SetTransferFunction  = 3;
+        Render               = 4;
+        Present              = 5;
+    }
+
+    required RequestType type = 1;
+    optional TransferFunction transfer_function = 4;
+    optional string volume_filename = 2;
+    optional Pose pose = 5;
+}
+
+message RendererReply {
+    required string status = 1;
+}

@@ -19,6 +19,14 @@ __global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int 
     }
 }
 
+__device__ float transform_color(float c) {
+    c = (c - 20.0 / 255.0) / (128.0 / 255.0 - 20.0 / 255.0);
+    if(c < 0) c = 0;
+    if(c > 1) c = 1;
+    c = c * c;
+    return c;
+}
+
 __global__ void allosphere_lens_blend_kernel(Color* data, int width, int height) {
     int px = threadIdx.x + blockDim.x * blockIdx.x;
     int py = threadIdx.y + blockDim.y * blockIdx.y;
@@ -26,7 +34,13 @@ __global__ void allosphere_lens_blend_kernel(Color* data, int width, int height)
         float fx = ((float)px + 0.5f) / (float)width;
         float fy = ((float)py + 0.5f) / (float)height;
         float blend = tex2D(blend_texture, fx, fy);
-        data[py * width + px] *= blend;
+        Color r = data[py * width + px];
+        r.r = transform_color(r.r);
+        r.g = transform_color(r.g);
+        r.b = transform_color(r.b);
+        r *= blend;
+        r.a = 1.0f;
+        // data[py * width + px] = r;
     }
 }
 

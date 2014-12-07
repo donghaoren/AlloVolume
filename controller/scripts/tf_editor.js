@@ -504,4 +504,19 @@ TransferFunctionEditor.prototype.render = function() {
     //ctx.fillRect(0, 0, width, axis_y);
 
     ctx.restore();
+
+    var content = [];
+    var N = 800;
+    for(var i = 0; i < N; i++) {
+        var t = i / (N - 1);
+        var c = tf.sample(t);
+        content.push(c);
+    }
+    if(this.onTransferFunctionChanged) {
+        this.onTransferFunctionChanged({
+            scale: tf.is_log,
+            domain: tf.domain,
+            content: content
+        });
+    }
 };

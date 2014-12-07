@@ -43,6 +43,8 @@ namespace allovolume {
 
         virtual void setDelegate(Delegate* delegate) = 0;
 
+        virtual void* getZMQContext() = 0;
+
         virtual ~SyncSystem() { }
 
         static SyncSystem* Create(const char* configfile);

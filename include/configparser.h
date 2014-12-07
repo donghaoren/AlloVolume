@@ -1,6 +1,7 @@
 #include <vector>
 #include <yaml-cpp/yaml.h>
 #include <iostream>
+
 class ConfigParser {
 public:
     ConfigParser() { }

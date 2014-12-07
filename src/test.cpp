@@ -1,6 +1,6 @@
 #include "dataset.h"
 #include "renderer.h"
-#include "allosphere_calibration.h"
+#include "allosphere/allosphere_calibration.h"
 
 #include <stdio.h>
 #include <string.h>

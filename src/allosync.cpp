@@ -276,6 +276,10 @@ namespace allovolume {
             return is_server;
         }
 
+        virtual void* getZMQContext() {
+            return zmq_context;
+        }
+
         ConfigParser config;
 
         void* zmq_context;

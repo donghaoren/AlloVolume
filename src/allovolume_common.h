@@ -1,0 +1,4 @@
+namespace allovolume {
+    struct StateManager {
+    };
+}
