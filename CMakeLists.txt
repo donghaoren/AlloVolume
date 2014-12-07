@@ -15,12 +15,13 @@ FIND_PACKAGE ( PkgConfig REQUIRED )
 PKG_SEARCH_MODULE ( GLFW REQUIRED glfw3 )
 PKG_SEARCH_MODULE ( ZeroMQ REQUIRED libzmq )
 PKG_SEARCH_MODULE ( YAMLCPP REQUIRED yaml-cpp )
+PKG_SEARCH_MODULE ( Protobuf REQUIRED protobuf )
 
 FIND_PACKAGE ( CUDA REQUIRED )
 FIND_PACKAGE ( HDF5 REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( FreeImage REQUIRED )
-FIND_PACKAGE ( Protobuf REQUIRED )
+#FIND_PACKAGE ( Protobuf REQUIRED )
 
 SET ( CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 )
 
@@ -87,13 +88,13 @@ TARGET_LINK_LIBRARIES (
 
 ADD_EXECUTABLE ( allovolume_renderer
     src/allovolume_renderer.cpp
-    src/renderer.pb.cc
+    src/allovolume_protocol.pb.cc
     src/allosync.cpp
 )
 
 ADD_EXECUTABLE ( allovolume_controller
     src/allovolume_controller.cpp
-    src/renderer.pb.cc
+    src/allovolume_protocol.pb.cc
     src/allosync.cpp
 )
 
@@ -104,7 +105,7 @@ TARGET_LINK_LIBRARIES (
     allosphere_calibration
     ${ZeroMQ_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
-    ${PROTOBUF_LIBRARY}
+    ${Protobuf_LIBRARIES}
     ${GLFW_LIBRARIES}
     ${OPENGL_LIBRARIES}
 )
@@ -114,7 +115,7 @@ TARGET_LINK_LIBRARIES (
     dataset
     ${ZeroMQ_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
-    ${PROTOBUF_LIBRARY}
+    ${Protobuf_LIBRARIES}
 )
 
 TARGET_LINK_LIBRARIES (

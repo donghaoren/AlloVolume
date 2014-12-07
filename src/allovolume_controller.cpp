@@ -16,7 +16,7 @@
 
 #include <zmq.h>
 
-#include "renderer.pb.h"
+#include "allovolume_protocol.pb.h"
 
 using namespace std;
 using namespace allovolume;
