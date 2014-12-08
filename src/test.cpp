@@ -413,13 +413,13 @@ void super3d_test() {
     renderer->setBlendingCoefficient(1e10);
     float sz = 2.5e10;
     renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
-    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
-    //renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+    //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
-    int width = 800, height = 800;
+    int width = 2000, height = 2000;
 
-    float radius = 1e14;
-    float eye_separation = 1e10 / 80.0;
+    float radius = pose.position.len();
+    float eye_separation = radius / 10.0;
 
     lens->setFocalDistance(radius);
     lens->setEyeSeparation(+eye_separation);

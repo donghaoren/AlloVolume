@@ -4,8 +4,7 @@
 #include "dataset.h"
 #include "renderer.h"
 #include "allosphere/allosphere_calibration.h"
-
-#include <memory>
+#include <boost/shared_ptr.hpp>
 
 // The renderer has 4 state varaibles:
 //  volume: The volume to be rendered.
@@ -22,8 +21,8 @@ struct RGBCurve {
 };
 
 struct AlloVolumeState {
-    std::shared_ptr<allovolume::VolumeBlocks> volume;
-    std::shared_ptr<allovolume::TransferFunction> transfer_function;
+    boost::shared_ptr<allovolume::VolumeBlocks> volume;
+    boost::shared_ptr<allovolume::TransferFunction> transfer_function;
     RGBCurve curve;
     allovolume::Pose pose;
 };

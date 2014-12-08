@@ -3,7 +3,7 @@
 #include "renderer.h"
 #include <float.h>
 #include <stdio.h>
-//#include <math_functions.h>
+#include <string.h>
 #include <algorithm>
 
 #include "cuda_common.h"
@@ -70,7 +70,7 @@ public:
             float t = (float)i / ((float)ticks - 1);
             Color c = tf_interpolate_host(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
             c.a = t;
-            blendGaussian(t, 1.0 / ticks / 40.0f, c);
+            blendGaussian(t, 1.0 / ticks / 10.0f, c);
         }
         is_dirty = true;
     }
