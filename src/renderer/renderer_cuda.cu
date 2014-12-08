@@ -8,7 +8,7 @@
 
 #include "rkv.h"
 
-#define RKV_SOLVER
+// #define RKV_SOLVER
 
 using namespace std;
 
@@ -68,8 +68,11 @@ struct ray_marching_parameters_t {
     const BlockDescription* blocks;
     const float* data;
     int width, height;
-    int block_count, block_min, block_max;
+    int block_count;
     float blend_coefficient;
+
+    VolumeRenderer::RaycastingMethod raycasting_method;
+    Vector bbox_min, bbox_max;
 
     Pose pose;
 };
@@ -207,15 +210,24 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
     // Initial color (background color).
     register Color color(0, 0, 0, 0);
 
+    // Global ray information.
+    float g_kin, g_kout;
+    intersectBox(pos, d, p.bbox_min, p.bbox_max, &g_kin, &g_kout);
+    if(g_kout < 0) {
+        p.pixels[idx] = color;
+        return;
+    }
+    if(g_kin < 0) g_kin = 0;
+
     // Block intersection.
     ray_marching_kernel_blockinfo_t blockinfos[128];
     int blockinfos_count = 0;
 
-    for(int block_cursor = p.block_min; block_cursor < p.block_max; block_cursor++) {
+    for(int block_cursor = 0; block_cursor < p.block_count; block_cursor++) {
         BlockDescription block = p.blocks[block_cursor];
         float kin, kout;
         if(intersectBox(pos, d, block.min, block.max, &kin, &kout)) {
-            if(kin < 0) kin = 0;
+            if(kin < g_kin) kin = g_kin;
             if(kin < kout) {
                 blockinfos[blockinfos_count].kin = kin;
                 blockinfos[blockinfos_count].kout = kout;
@@ -242,7 +254,7 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
     }
 
     // Simple solution: fixed step size.
-    float kmax = FLT_MAX;
+    float kmax = g_kout;
     float L = p.blend_coefficient;
 
     // Render blocks.
@@ -252,52 +264,52 @@ void ray_marching_kernel(ray_marching_parameters_t p) {
         float kout = blockinfos[cursor].kout;
         if(kout > kmax) kout = kmax;
         if(kin < kout) {
-#ifdef RKV_SOLVER
-            // Render this block.
-            float distance = kout - kin;
-            float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            block_interpolate_t block_access(block, p.data + block.offset);
-            render_dxdt_t dxdt(block_access, p.tf, pos, d, kin, kout, L);
-            color_norm_t color_norm;
-            Color new_color;
-            RungeKuttaVerner(0.0f, distance, color, dxdt, color_norm, 1e-6f, voxel_size / 10.0f, voxel_size, new_color);
-            color = new_color;
-#else
-            // Render this block.
-            float distance = kout - kin;
-            float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            int steps = ceil(distance / voxel_size);
-            if(steps > block.xsize * 10) steps = block.xsize * 10;
-            float step_size = distance / steps;
+            if(p.raycasting_method == VolumeRenderer::kAdaptiveRKVMethod) {
+                // Render this block.
+                float distance = kout - kin;
+                float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
+                block_interpolate_t block_access(block, p.data + block.offset);
+                render_dxdt_t dxdt(block_access, p.tf, pos, d, kin, kout, L);
+                color_norm_t color_norm;
+                Color new_color;
+                RungeKuttaVerner(0.0f, distance, color, dxdt, color_norm, 1e-6f, voxel_size / 10.0f, voxel_size, new_color);
+                color = new_color;
+            } else {
+                // Render this block.
+                float distance = kout - kin;
+                float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
+                int steps = ceil(distance / voxel_size);
+                if(steps > block.xsize * 10) steps = block.xsize * 10;
+                float step_size = distance / steps;
 
-            // Interpolate context.
-            block_interpolate_t block_access(block, p.data + block.offset);
+                // Interpolate context.
+                block_interpolate_t block_access(block, p.data + block.offset);
 
-            // Blending with RK4.
-            Color c0 = p.tf.get(block_access.interpolate(pos + d * kout));
-            float c0s = log(1.0f - c0.a) / L;
-            c0.a = 1.0f;
-            for(int i = steps - 1; i >= 0; i--) {
-                Color cm = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
-                float cms = log(1.0f - cm.a) / L;
-                cm.a = 1.0f;
-                Color c1 = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * i)));
-                float c1s = log(1.0f - c1.a) / L;
-                c1.a = 1.0f;
-                // Runge Kutta Order 4 method.
-                // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
-                //   y has premultiplied alpha.
-                //   c has non-premultiplied alpha.
-                Color k1 = (color - c0) * c0s;
-                Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cms;
-                Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
-                Color k4 = (color + k3 * (step_size) - c1) * c1s;
-                color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
+                // Blending with RK4.
+                Color c0 = p.tf.get(block_access.interpolate(pos + d * kout));
+                float c0s = log(1.0f - c0.a) / L;
+                c0.a = 1.0f;
+                for(int i = steps - 1; i >= 0; i--) {
+                    Color cm = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
+                    float cms = log(1.0f - cm.a) / L;
+                    cm.a = 1.0f;
+                    Color c1 = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * i)));
+                    float c1s = log(1.0f - c1.a) / L;
+                    c1.a = 1.0f;
+                    // Runge Kutta Order 4 method.
+                    // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
+                    //   y has premultiplied alpha.
+                    //   c has non-premultiplied alpha.
+                    Color k1 = (color - c0) * c0s;
+                    Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cms;
+                    Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
+                    Color k4 = (color + k3 * (step_size) - c1) * c1s;
+                    color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
 
-                c0 = c1;
-                c0s = c1s;
+                    c0 = c1;
+                    c0s = c1s;
+                }
             }
-#endif
             kmax = kin;
         }
     }
@@ -322,7 +334,10 @@ public:
         data(512 * 32 * 32 * 32),
         volume_data(512 * 34 * 34 * 34),
         rays(1000 * 1000),
-        blend_coefficient(1.0) { }
+        blend_coefficient(1.0),
+        raycasting_method(kRK4Method),
+        bbox_min(-1e20, -1e20, -1e20),
+        bbox_max(1e20, 1e20, 1e20) { }
 
     struct BlockCompare {
         BlockCompare(Vector center_) {
@@ -370,6 +385,14 @@ public:
         pose = pose_;
     }
 
+    virtual void setBoundingBox(Vector min, Vector max) {
+        bbox_min = min;
+        bbox_max = max;
+    }
+    virtual void setRaycastingMethod(RaycastingMethod method) {
+        raycasting_method = method;
+    }
+
     virtual void render() {
         // Sort blocks roughly.
         BlockCompare block_compare(pose.position);
@@ -393,6 +416,10 @@ public:
         pms.height = image->getHeight();
         pms.block_count = block_count;
 
+        pms.bbox_min = bbox_min;
+        pms.bbox_max = bbox_max;
+        pms.raycasting_method = raycasting_method;
+
         // Set transfer function.
         pms.tf.data = tf->getContentGPU();
         tf->getDomain(pms.tf.min, pms.tf.max);
@@ -406,9 +433,6 @@ public:
         // Other parameters.
         pms.blend_coefficient = blend_coefficient;
         // Block range.
-        pms.block_max = block_count;
-        pms.block_min = 0;
-        pms.block_max = block_count;
         pms.pose = pose;
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
@@ -426,6 +450,8 @@ public:
     Image* image;
     Pose pose;
     float blend_coefficient;
+    RaycastingMethod raycasting_method;
+    Vector bbox_min, bbox_max;
 };
 
 VolumeRenderer* VolumeRenderer::CreateGPU() {

@@ -398,8 +398,8 @@ void super3d_test() {
     VolumeBlocks* volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
     TransferFunction* tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 32);
     Pose pose;
-    pose.position = Vector(0, 0, -1e10);
-    pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
+    pose.position = Vector(-1e10, 0, -0.1e10) * 3;
+    pose.rotation = Quaternion::Rotation(-pose.position.normalize().cross(Vector(1, 0, 0)), -acos(-pose.position.normalize().dot(Vector(1, 0, 0))));
 
     //Lens* lens = Lens::CreateEquirectangular();
     Lens* lens = Lens::CreatePerspective(PI / 2.0);
@@ -411,6 +411,10 @@ void super3d_test() {
     renderer->setLens(lens);
     renderer->setTransferFunction(tf);
     renderer->setBlendingCoefficient(1e10);
+    float sz = 2.5e10;
+    renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
+    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    //renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
     int width = 800, height = 800;
 

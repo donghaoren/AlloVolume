@@ -82,6 +82,11 @@ struct Pose {
 
 class VolumeRenderer {
 public:
+    enum RaycastingMethod {
+        kRK4Method = 1,
+        kAdaptiveRKVMethod = 2
+    };
+
     // Set volume.
     virtual void setVolume(VolumeBlocks* volume) = 0;
     // This should be approximately the size of your volume.
@@ -94,6 +99,10 @@ public:
     virtual void setPose(const Pose& pose) = 0;
     // Set output image.
     virtual void setImage(Image* image) = 0;
+
+    virtual void setBoundingBox(Vector min, Vector max) = 0;
+    virtual void setRaycastingMethod(RaycastingMethod method) = 0;
+
     // Render!
     virtual void render() = 0;
     virtual ~VolumeRenderer() { }
