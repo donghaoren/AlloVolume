@@ -1,5 +1,5 @@
-#ifndef ALLOVOLUME_UTILS_H
-#define ALLOVOLUME_UTILS_H
+#ifndef ALLOVOLUME_UTILS_H_INCLUDED
+#define ALLOVOLUME_UTILS_H_INCLUDED
 
 #include <cmath>
 
@@ -24,10 +24,12 @@ struct Vector {
     GPUEnable Vector& operator /= (float s) { x /= s; y /= s; z /= s; return *this; }
     GPUEnable Vector operator + (const Vector& v) const { return Vector(x + v.x, y + v.y, z + v.z); }
     GPUEnable Vector operator - (const Vector& v) const { return Vector(x - v.x, y - v.y, z - v.z); }
+    GPUEnable Vector operator * (const Vector& v) const { return Vector(x * v.x, y * v.y, z * v.z); }
+    GPUEnable Vector operator / (const Vector& v) const { return Vector(x / v.x, y / v.y, z / v.z); }
     GPUEnable Vector operator - () const { return Vector(-x, -y, -z); }
     GPUEnable Vector operator * (float s) const { return Vector(x * s, y * s, z * s); }
     GPUEnable Vector operator / (float s) const { return Vector(x / s, y / s, z / s); }
-    GPUEnable float operator * (const Vector& v) const { return x * v.x + y * v.y + z * v.z; }
+    GPUEnable float dot(const Vector& v) const { return x * v.x + y * v.y + z * v.z; }
     GPUEnable float len2() const { return x * x + y * y + z * z; }
     double len2_double() const { return (double)x * (double)x + (double)y * (double)y + (double)z * (double)z; }
     GPUEnable float len() const { return std::sqrt(x * x + y * y + z * z); }
@@ -47,6 +49,54 @@ struct Vector4 {
     float x, y, z, w;
 };
 
+struct Quaternion {
+    Vector v;
+    float w;
+
+    GPUEnable Quaternion() { }
+    GPUEnable Quaternion(float w_, float x_, float y_, float z_) : w(w_), v(x_, y_, z_) { }
+    GPUEnable Quaternion(float w_, const Vector& v_) : w(w_), v(v_) { }
+
+    GPUEnable static Quaternion Rotation(const Vector& v, float alpha) {
+        return Quaternion(std::cos(alpha / 2.0f), v.normalize() * std::sin(alpha / 2.0f));
+    }
+
+    GPUEnable float len() const{
+        return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z + w * w);
+    }
+    GPUEnable Quaternion operator + (const Quaternion& q) const {
+        return Quaternion(w + q.w, v + q.v);
+    }
+    GPUEnable Quaternion operator - (const Quaternion& q) const {
+        return Quaternion(w - q.w, v - q.v);
+    }
+    GPUEnable Quaternion operator - () const {
+        return Quaternion(-w, -v);
+    }
+    GPUEnable Quaternion operator * (float s) const {
+        return Quaternion(w * s, v * s);
+    }
+    GPUEnable Quaternion operator / (float s) const {
+        return Quaternion(w / s, v / s);
+    }
+    GPUEnable Quaternion normalize() const {
+        float l = len();
+        return *this * (1.0f / l);
+    }
+    GPUEnable Quaternion operator * (const Quaternion& q) const {
+        return Quaternion(w * q.w - v.dot(q.v), v.cross(q.v) + q.v * w + v * q.w);
+    }
+    GPUEnable Quaternion operator * (const Vector& v) const {
+        return *this * Quaternion(0.0f, v);
+    }
+    GPUEnable Quaternion inversion() const {
+        return Quaternion(w, -v);
+    }
+    GPUEnable Vector rotate(const Vector& v) const {
+        return ((*this) * v * inversion()).v;
+    }
+};
+
 GPUEnable float num_min(float a, float b) { return a < b ? a : b; }
 GPUEnable float num_max(float a, float b) { return a > b ? a : b; }
 GPUEnable float clamp01(float a) { return a < 0 ? 0 : (a > 1 ? 1 : a); }
@@ -58,7 +108,7 @@ inline int diviur(int a, int b) {
 
 struct Color {
     float r, g, b, a;
-    Color() { }
+    GPUEnable Color() { }
     GPUEnable Color(float r_, float g_, float b_, float a_) : r(r_), g(g_), b(b_), a(a_) { }
     GPUEnable Color(float r_, float g_, float b_) : r(r_), g(g_), b(b_), a(1) { }
     GPUEnable Color blendTo(Color c) {

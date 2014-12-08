@@ -1,5 +1,5 @@
-#ifndef ALLOVOLUME_RENDERER_H
-#define ALLOVOLUME_RENDERER_H
+#ifndef ALLOVOLUME_RENDERER_H_INCLUDED
+#define ALLOVOLUME_RENDERER_H_INCLUDED
 
 #include "dataset.h"
 #include "utils.h"
@@ -24,23 +24,29 @@ public:
 
 class TransferFunction {
 public:
-    struct Metadata {
-        float input_min, input_max;
-        float blend_coefficient;
-        int size;
-        bool is_log_scale;
+    enum Scale {
+        kLinearScale = 1,
+        kLogScale = 2
     };
 
-    virtual void setParameter(const char* name, void* value) = 0;
+    // Get domain.
+    virtual void getDomain(float& min, float& max) = 0;
+    virtual Scale getScale() = 0;
 
-    virtual Metadata* getMetadata() = 0;
     virtual Color* getContent() = 0;
     virtual Color* getContentGPU() = 0;
+    virtual size_t getSize() = 0;
+
+    virtual void setContent(const Color* color, size_t size) = 0;
+    virtual void setDomain(float min, float max) = 0;
+    virtual void setScale(Scale scale) = 0;
 
     virtual ~TransferFunction() { }
 
-    static TransferFunction* CreateGaussianTicks(float min, float max, int ticks, bool is_log);
-    static TransferFunction* CreateLinearGradient(float min, float max, bool is_log);
+    static TransferFunction* CreateTransparent(float min, float max, Scale scale, size_t size);
+
+    static TransferFunction* CreateGaussianTicks(float min, float max, Scale scale, int ticks);
+    static TransferFunction* CreateLinearGradient(float min, float max, Scale scale);
 };
 
 class Lens {
@@ -49,24 +55,46 @@ public:
         Vector origin, direction;
     };
 
-    virtual void setParameter(const char* name, void* value) = 0;
-    virtual Vector getCenter() = 0;
+    virtual void setParameter(const char* name, const void* value) = 0;
+
+    template<typename T>
+    void set(const char* name, const T& value) { setParameter(name, &value); }
+
+    // Common parameters.
+    void setEyeSeparation(float value) { set<float>("eye_separation", value); }
+    void setFocalDistance(float value) { set<float>("focal_distance", value); }
+
     virtual void getRays(int width, int height, Ray* rays) = 0;
     virtual void getRaysGPU(int width, int height, Ray* rays) = 0;
 
     virtual ~Lens() { }
 
-    static Lens* CreateEquirectangular(Vector origin, Vector up, Vector direction, float eye_separation = 0.0f, float radius = 1.0f);
-    static Lens* CreatePerspective(Vector eye, Vector at, Vector up, Vector fovx);
-    static Lens* CreateOrthogonal(Vector eye, Vector at, Vector up, float spanx);
+    static Lens* CreateEquirectangular();
+    static Lens* CreatePerspective(float fovx);
+    static Lens* CreateOrthogonal(float spanx);
+};
+
+struct Pose {
+    Vector position;
+    Quaternion rotation;
+    Pose() : position(0, 0, 0), rotation(1, 0, 0, 0) { }
 };
 
 class VolumeRenderer {
 public:
+    // Set volume.
     virtual void setVolume(VolumeBlocks* volume) = 0;
+    // This should be approximately the size of your volume.
+    virtual void setBlendingCoefficient(float value) = 0;
+    // Transfer function.
     virtual void setTransferFunction(TransferFunction* tf) = 0;
+    // Set lens.
     virtual void setLens(Lens* lens) = 0;
+    // Set pose.
+    virtual void setPose(const Pose& pose) = 0;
+    // Set output image.
     virtual void setImage(Image* image) = 0;
+    // Render!
     virtual void render() = 0;
     virtual ~VolumeRenderer() { }
 

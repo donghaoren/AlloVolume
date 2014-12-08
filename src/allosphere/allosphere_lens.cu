@@ -75,13 +75,10 @@ public:
         origin = Vector(0, 0, 0);
     }
 
-    virtual void setParameter(const char* name, void* value) {
+    virtual void setParameter(const char* name, const void* value) {
         if(strcmp(name, "origin") == 0) {
             origin = *(Vector*)value;
         }
-    }
-    virtual Vector getCenter() {
-        return Vector(0, 0, 0);
     }
     virtual void getRays(int width, int height, Ray* rays) { }
     virtual void getRaysGPU(int width, int height, Ray* rays) {

@@ -1,5 +1,5 @@
-#ifndef ALLOVOLUME_DATASET_H
-#define ALLOVOLUME_DATASET_H
+#ifndef ALLOVOLUME_DATASET_H_INCLUDED
+#define ALLOVOLUME_DATASET_H_INCLUDED
 
 #include "utils.h"
 #include <stdlib.h>

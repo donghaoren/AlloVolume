@@ -1,3 +1,6 @@
+#ifndef ALLOSPHERE_CALIBRATION_H_INCLUDED
+#define ALLOSPHERE_CALIBRATION_H_INCLUDED
+
 // Read allosphere calibration data.
 
 #include "utils.h"
@@ -38,3 +41,5 @@ namespace allovolume {
     };
 
 }
+
+#endif

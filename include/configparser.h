@@ -1,3 +1,6 @@
+#ifndef ALLOVOLUME_CONFIG_PARSER_H_INCLUDED
+#define ALLOVOLUME_CONFIG_PARSER_H_INCLUDED
+
 #include <vector>
 #include <yaml-cpp/yaml.h>
 #include <iostream>
@@ -47,3 +50,5 @@ public:
 
     std::vector<YAML::Node> entries;
 };
+
+#endif

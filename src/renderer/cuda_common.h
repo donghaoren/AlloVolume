@@ -1,3 +1,6 @@
+#ifndef ALLOVOLUME_CUDA_COMMON_H_INCLUDED
+#define ALLOVOLUME_CUDA_COMMON_H_INCLUDED
+
 namespace allovolume {
 
     class runtime_error { };
@@ -70,3 +73,5 @@ namespace allovolume {
     };
 
 }
+
+#endif

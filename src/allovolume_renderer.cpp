@@ -55,8 +55,8 @@ public:
             images.push_back(Image::Create(96, 64));
         }
         renderer = VolumeRenderer::CreateGPU();
-        tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, 20, true);
-        tf->getMetadata()->blend_coefficient = 1e10;
+        tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 20);
+        renderer->setBlendingCoefficient(1e10);
 
         initWindow();
         for(int i = 0; i < render_slave->num_projections; i++) {

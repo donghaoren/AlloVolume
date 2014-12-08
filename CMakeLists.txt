@@ -30,6 +30,7 @@ LINK_DIRECTORIES (
   ${HDF5_LIBRARY_DIRS}
   ${YAMLCPP_LIBRARY_DIRS}
   ${GLFW_LIBRARY_DIRS}
+  ${Protobuf_LIBRARY_DIRS}
 )
 
 INCLUDE_DIRECTORIES (
@@ -41,34 +42,41 @@ INCLUDE_DIRECTORIES (
 )
 
 ADD_LIBRARY (
-  dataset
+  allovolume_dataset SHARED
     src/dataset/dataset.cpp
     src/dataset/dataset_flash.cpp
 )
 
 TARGET_LINK_LIBRARIES (
-  dataset
+  allovolume_dataset
     ${HDF5_LIBRARIES}
 )
 
 CUDA_ADD_LIBRARY (
-  renderer_cuda
+  allovolume_renderer SHARED
     src/renderer/renderer_cuda.cu
     src/renderer/cuda_common.cu
+    src/renderer/transfer_function.cpp
     src/renderer/lens.cu
     src/renderer/image_codec.cpp
     src/renderer/image.cpp
 
 )
 
+TARGET_LINK_LIBRARIES (
+  allovolume_renderer
+    ${FREEIMAGE_LIBRARIES}
+)
+
 CUDA_ADD_LIBRARY (
-  allosphere_calibration
+  allovolume_allosphere_calibration SHARED
     src/allosphere/allosphere_calibration.cpp
     src/allosphere/allosphere_lens.cu
 )
 
 TARGET_LINK_LIBRARIES (
-  renderer_cuda
+  allovolume_allosphere_calibration
+    ${YAMLCPP_LIBRARIES}
     ${FREEIMAGE_LIBRARIES}
 )
 
@@ -83,26 +91,26 @@ ADD_EXECUTABLE ( dataset_converter
 
 TARGET_LINK_LIBRARIES (
   dataset_converter
-    dataset
+    allovolume_dataset
 )
 
-ADD_EXECUTABLE ( allovolume_renderer
+ADD_EXECUTABLE ( renderer
     src/allovolume_renderer.cpp
     src/allovolume_protocol.pb.cc
     src/allosync.cpp
 )
 
-ADD_EXECUTABLE ( allovolume_controller
+ADD_EXECUTABLE ( controller
     src/allovolume_controller.cpp
     src/allovolume_protocol.pb.cc
     src/allosync.cpp
 )
 
 TARGET_LINK_LIBRARIES (
-  allovolume_renderer
-    dataset
-    renderer_cuda
-    allosphere_calibration
+  renderer
+    allovolume_dataset
+    allovolume_renderer
+    allovolume_allosphere_calibration
     ${ZeroMQ_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
     ${Protobuf_LIBRARIES}
@@ -111,8 +119,8 @@ TARGET_LINK_LIBRARIES (
 )
 
 TARGET_LINK_LIBRARIES (
-  allovolume_controller
-    dataset
+  controller
+    allovolume_dataset
     ${ZeroMQ_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
     ${Protobuf_LIBRARIES}
@@ -120,48 +128,10 @@ TARGET_LINK_LIBRARIES (
 
 TARGET_LINK_LIBRARIES (
   test
-    dataset
-    renderer_cuda
-    allosphere_calibration
+    allovolume_dataset
+    allovolume_renderer
+    allovolume_allosphere_calibration
     ${GLFW_LIBRARIES}
     ${OPENGL_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
 )
-
-# IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" )
-#     FIND_PACKAGE ( GLFW REQUIRED )
-#     TARGET_LINK_LIBRARIES ( test
-#       ${GLFW_LIBRARY}
-#     )
-#     TARGET_LINK_LIBRARIES ( allovolume_renderer
-#       ${GLFW_LIBRARY}
-#     )
-# ENDIF ( )
-
-# IF ( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
-#     TARGET_LINK_LIBRARIES ( test
-#       ${GLFW_STATIC_LIBRARIES}
-#     )
-#     TARGET_LINK_LIBRARIES ( allovolume_renderer
-#       ${GLFW_STATIC_LIBRARIES}
-#     )
-# ENDIF ( )
-
-# TARGET_LINK_LIBRARIES ( test
-#     dataset
-#     renderer_cuda
-#     ${OPENGL_LIBRARIES}
-#     ${YAMLCPP_LIBRARIES}
-# )
-
-# TARGET_LINK_LIBRARIES ( allovolume_renderer
-#     dataset
-#     renderer_cuda
-#     ${FREEIMAGE_LIBRARIES}
-#     ${HDF5_LIBRARIES}
-#     ${ZeroMQ_LIBRARIES}
-#     ${YAMLCPP_LIBRARIES}
-#     ${OPENGL_LIBRARIES}
-#     ${PROTOBUF_LIBRARY}
-#     readline
-# )

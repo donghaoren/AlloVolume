@@ -1,3 +1,6 @@
+#ifndef ALLOSYNC_H_INCLUDED
+#define ALLOSYNC_H_INCLUDED
+
 // Synchronization kernel for Allosphere integration
 
 namespace allovolume {
@@ -50,3 +53,5 @@ namespace allovolume {
         static SyncSystem* Create(const char* configfile);
     };
 }
+
+#endif
