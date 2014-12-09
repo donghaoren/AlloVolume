@@ -5,6 +5,7 @@
 #include "renderer.h"
 #include "allosphere/allosphere_calibration.h"
 #include <boost/shared_ptr.hpp>
+#include <vector>
 
 // The renderer has 4 state varaibles:
 //  volume: The volume to be rendered.
@@ -14,17 +15,23 @@
 //  RGB curve: The rgb curve for final output.
 // Volume is set only, others are get/set.
 
-const int kRGBCurveSize = 256;
-
 struct RGBCurve {
-    float data[kRGBCurveSize];
+    std::vector<float> data;
+};
+
+struct TransferFunctionData {
+    float domain_min, domain_max;
+    allovolume::TransferFunction::Scale scale;
+    std::vector<allovolume::Color> content;
 };
 
 struct AlloVolumeState {
     boost::shared_ptr<allovolume::VolumeBlocks> volume;
-    boost::shared_ptr<allovolume::TransferFunction> transfer_function;
+    TransferFunctionData transfer_function;
     RGBCurve curve;
     allovolume::Pose pose;
+    float eye_separation, focal_distance;
+    float blending_coefficient;
 };
 
 #endif

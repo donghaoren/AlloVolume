@@ -11,30 +11,60 @@ message Pose {
 }
 
 message TransferFunction {
-    required string scale      = 1;
+    enum Scale {
+        Linear = 1;
+        Log = 2;
+    }
+    required Scale scale       = 1;
     required float domain_min  = 2;
     required float domain_max  = 3;
     required bytes content     = 4;
 }
 
+message RGBCurve {
+    required int32 size        = 1;
+    required bytes content     = 2;
+}
+
+message LensParameters {
+    required float focal_distance = 1;
+    required float eye_separation = 2;
+}
+
+message RendererParameters {
+    enum RenderingMethod {
+        RK4                    = 1;
+        AdaptiveRKV            = 2;
+    }
+    required RenderingMethod method     = 1;
+    required float blending_coefficient = 2;
+}
+
 message RendererBroadcast {
     enum RequestType {
-        LoadVolume           = 0;
-        LoadVolumeFromFile   = 1;
-        SetPose              = 2;
-        SetTransferFunction  = 3;
-        Render               = 4;
-        Present              = 5;
+        LoadVolume             = 10;
+        LoadVolumeFromFile     = 11;
+        SetPose                = 20;
+        SetLensParameters      = 21;
+        SetRendererParameters  = 22;
+        SetTransferFunction    = 30;
+        SetRGBCurve            = 40;
+        Render                 = 100;
+        Present                = 101;
     }
 
-    required RequestType type = 1;
+    required RequestType type        = 1;
 
-    optional string volume_filename = 2;
-    optional bytes volume_data      = 3;
+    optional Pose pose = 2;
+    optional RGBCurve rgb_curve      = 3;
 
-    optional TransferFunction transfer_function = 4;
+    optional TransferFunction transfer_function = 5;
 
-    optional Pose pose = 5;
+    optional string volume_filename  = 10;
+    optional bytes volume_data       = 11;
+
+    optional LensParameters lens_parameters = 20;
+    optional RendererParameters renderer_parameters = 21;
 }
 
 message RendererCommand {

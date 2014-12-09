@@ -167,6 +167,17 @@ private:
     size_t size, capacity;
 };
 
+TransferFunction* TransferFunction::CreateTransparent(float min, float max, Scale scale, size_t size) {
+    TransferFunctionImpl* r = new TransferFunctionImpl();
+    r->setDomain(min, max);
+    r->setScale(scale);
+    Color* transparent = new Color[size];
+    for(int i = 0; i < size; i++) transparent[i] = Color(0, 0, 0, 0);
+    r->setContent(transparent, size);
+    delete [] transparent;
+    return r;
+}
+
 TransferFunction* TransferFunction::CreateGaussianTicks(float min, float max, Scale scale, int ticks) {
     TransferFunctionImpl* r = new TransferFunctionImpl();
     r->setDomain(min, max);

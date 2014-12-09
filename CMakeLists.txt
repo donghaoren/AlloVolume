@@ -121,6 +121,7 @@ TARGET_LINK_LIBRARIES (
 TARGET_LINK_LIBRARIES (
   controller
     allovolume_dataset
+    readline
     ${ZeroMQ_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
     ${Protobuf_LIBRARIES}

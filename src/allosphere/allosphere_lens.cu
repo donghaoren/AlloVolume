@@ -5,7 +5,7 @@ namespace allovolume {
 texture<float4, 2, cudaReadModeElementType> warp_texture;
 texture<float, 2, cudaReadModeElementType> blend_texture;
 
-__global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int height, Vector origin) {
+__global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int height, float eye_separation, float focal_distance) {
     int px = threadIdx.x + blockDim.x * blockIdx.x;
     int py = threadIdx.y + blockDim.y * blockIdx.y;
     if(px < width && py < height) {
@@ -13,8 +13,10 @@ __global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int 
         float fy = ((float)py + 0.5f) / (float)height;
         float4 pos = tex2D(warp_texture, fx, 1.0f - fy);
         Lens::Ray r;
-        r.origin = origin;
-        r.direction = Vector(pos.z, pos.x, pos.y).normalize();
+        Vector primary_direction = Vector(pos.z, pos.x, pos.y).normalize();
+        Vector lookat = primary_direction * focal_distance;
+        r.origin = Vector(-primary_direction.y, primary_direction.x, 0) * eye_separation / 2.0f;
+        r.direction = (lookat - r.origin).normalize();
         rays[py * width + px] = r;
     }
 }
@@ -72,18 +74,22 @@ public:
         blend_texture.addressMode[0] = cudaAddressModeClamp;
         blend_texture.addressMode[1] = cudaAddressModeClamp;
 
-        origin = Vector(0, 0, 0);
+        eye_separation = 0;
+        focal_distance = 1;
     }
 
     virtual void setParameter(const char* name, const void* value) {
-        if(strcmp(name, "origin") == 0) {
-            origin = *(Vector*)value;
+        if(strcmp(name, "eye_separation") == 0) {
+            eye_separation = *(float*)value;
+        }
+        if(strcmp(name, "focal_distance") == 0) {
+            focal_distance = *(float*)value;
         }
     }
     virtual void getRays(int width, int height, Ray* rays) { }
     virtual void getRaysGPU(int width, int height, Ray* rays) {
         cudaBindTextureToArray(warp_texture, warp_data, channel_description);
-        allosphere_lens_get_rays_kernel<<< dim3(diviur(width, 8), diviur(height, 8), 1), dim3(8, 8, 1) >>>(rays, width, height, origin);
+        allosphere_lens_get_rays_kernel<<< dim3(diviur(width, 8), diviur(height, 8), 1), dim3(8, 8, 1) >>>(rays, width, height, eye_separation, focal_distance);
         cudaThreadSynchronize();
         cudaUnbindTexture(warp_texture);
     }
@@ -100,7 +106,7 @@ public:
     virtual ~AllosphereLensImpl() {
     }
 
-    Vector origin;
+    float eye_separation, focal_distance;
 
     cudaArray* warp_data;
     cudaChannelFormatDesc channel_description;

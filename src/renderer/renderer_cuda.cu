@@ -357,9 +357,8 @@ public:
         blend_coefficient = value;
     }
 
-    virtual void setVolume(VolumeBlocks* volume_) {
+    virtual void setVolume(VolumeBlocks* volume) {
         // Copy volume data.
-        volume = volume_;
         block_count = volume->getBlockCount();
         data.allocate(volume->getDataSize());
         data.upload(volume->getData());
@@ -444,7 +443,6 @@ public:
     MirroredMemory<float> volume_data, volume_blocks, data;
     MirroredMemory<Lens::Ray> rays;
     int block_count;
-    VolumeBlocks* volume;
     TransferFunction* tf;
     Lens* lens;
     Image* image;

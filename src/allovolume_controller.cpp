@@ -1,5 +1,4 @@
 #include "renderer.h"
-#include "allosync.h"
 #include "configparser.h"
 #include "allosphere/allosphere_calibration.h"
 
@@ -23,22 +22,36 @@
 using namespace std;
 using namespace allovolume;
 
+ConfigParser config;
+void* zmq_context;
 
-class Controller : public SyncSystem::Delegate {
+class Controller {
 public:
-    Controller(SyncSystem* sync_) {
-        waiting_for_barrier = false;
-        sync = sync_;
-        sync->setDelegate(this);
-        sync->start();
+    void* socket_pubsub;
+
+    Controller() {
+        socket_pubsub = zmq_socket(zmq_context, ZMQ_PUB);
+        int value;
+        value = config.get<int>("SyncSystem.zmq.sndhwm", 10000);
+        zmq_setsockopt(socket_pubsub, ZMQ_SNDHWM, &value, sizeof(int));
+        value = config.get<int>("SyncSystem.zmq.sndbuf", 0);
+        zmq_setsockopt(socket_pubsub, ZMQ_SNDBUF, &value, sizeof(int));
+        value = config.get<int>("SyncSystem.zmq.rate", 10000000);
+        zmq_setsockopt(socket_pubsub, ZMQ_RATE, &value, sizeof(int));
+
+        if(zmq_bind(socket_pubsub, config.get<string>("SyncSystem.broadcast").c_str()) < 0) {
+            fprintf(stderr, "zmq_msg_send: %s\n", zmq_strerror(zmq_errno()));
+        }
     }
 
     void _send_message(const protocol::RendererBroadcast& msg) {
         size_t size = msg.ByteSize();
-        void *buffer = malloc(size);
-        msg.SerializeToArray(buffer, size);
-        sync->sendMessage(buffer, size);
-        free(buffer);
+        zmq_msg_t zmsg;
+        zmq_msg_init_size(&zmsg, size);
+        msg.SerializeToArray(zmq_msg_data(&zmsg), size);
+        if(zmq_msg_send(&zmsg, socket_pubsub, 0) < 0) {
+            fprintf(stderr, "zmq_msg_send: %s\n", zmq_strerror(zmq_errno()));
+        }
     }
 
     void loadVolume(VolumeBlocks* volume) {
@@ -67,12 +80,6 @@ public:
         _send_message(msg);
     }
 
-    void barrier() {
-        waiting_for_barrier = true;
-        sync->sendBarrier();
-        while(waiting_for_barrier) { usleep(1000); }
-    }
-
     void setPose(Vector origin) {
         protocol::RendererBroadcast msg;
         msg.set_type(protocol::RendererBroadcast_RequestType_SetPose);
@@ -82,90 +89,82 @@ public:
         _send_message(msg);
     }
 
-    virtual void onBarrierClear(SyncSystem* sync, size_t sequence_id) {
-        waiting_for_barrier = false;
-    }
-
-    volatile bool waiting_for_barrier;
-
-    SyncSystem* sync;
 };
 
 int main(int argc, char* argv[]) {
-    SyncSystem* sync = SyncSystem::Create("allovolume.server.yaml");
-    Controller controller(sync);
-    ConfigParser config("allovolume.server.yaml");
+    zmq_context = zmq_ctx_new();
+    config.parseFile("allovolume.server.yaml");
+    Controller controller;
 
-    void* controller_socket = zmq_socket(sync->getZMQContext(), ZMQ_REP);
-    zmq_bind(controller_socket, config.get<string>("allovolume.controller_endpoint").c_str());
-
-    while(1) {
-        int r;
-        protocol::RendererCommand cmd;
-        zmq_msg_t msg;
-        zmq_msg_init(&msg);
-        r = zmq_msg_recv(&msg, controller_socket, 0);
-        if(r < 0) {
-            fprintf(stderr, "zmq_msg_recv: %s\n", zmq_strerror(zmq_errno()));
-            break;
-        }
-        cmd.ParseFromArray(zmq_msg_data(&msg), zmq_msg_size(&msg));
-        zmq_msg_close(&msg);
-
-        protocol::RendererReply reply;
-        reply.set_status("success");
-
-        printf("Request: %s\n", RendererCommand_RequestType_Name(cmd.type()).c_str());
-
-        switch(cmd.type()) {
-            case protocol::RendererCommand_RequestType_LoadVolume: {
-                VolumeBlocks* vol = VolumeBlocks::LoadFromFile(cmd.volume_filename().c_str());
-                controller.loadVolume(vol);
-                delete vol;
-            } break;
-            case protocol::RendererCommand_RequestType_LoadVolumeFromFile: {
-            } break;
-            case protocol::RendererCommand_RequestType_SetPose: {
-                Vector origin(cmd.pose().x(), cmd.pose().y(), cmd.pose().z());
-                controller.setPose(origin);
-                controller.render();
-                controller.present();
-            } break;
-            case protocol::RendererCommand_RequestType_SetTransferFunction: {
-            } break;
-        }
-
-        zmq_msg_init_size(&msg, reply.ByteSize());
-        reply.SerializeToArray(zmq_msg_data(&msg), zmq_msg_size(&msg));
-        r = zmq_msg_send(&msg, controller_socket, 0);
-        if(r < 0) {
-            fprintf(stderr, "zmq_msg_send: %s\n", zmq_strerror(zmq_errno()));
-            break;
-        }
-    }
+    // void* controller_socket = zmq_socket(sync->getZMQContext(), ZMQ_REP);
+    // zmq_bind(controller_socket, config.get<string>("allovolume.controller_endpoint").c_str());
 
     // while(1) {
-    //     char* input = readline("> ");
-    //     if(!input) break;
-    //     string in(input);
-    //     free(input);
-    //     if(in == "volume") {
-    //         VolumeBlocks* vol = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
-    //         controller.loadVolume(vol);
-    //         delete vol;
+    //     int r;
+    //     protocol::RendererCommand cmd;
+    //     zmq_msg_t msg;
+    //     zmq_msg_init(&msg);
+    //     r = zmq_msg_recv(&msg, controller_socket, 0);
+    //     if(r < 0) {
+    //         fprintf(stderr, "zmq_msg_recv: %s\n", zmq_strerror(zmq_errno()));
+    //         break;
     //     }
-    //     if(in == "setpose") {
-    //         char* input = readline("Pose: ");
-    //         Vector origin;
-    //         sscanf(input, "%f %f %f", &origin.x, &origin.y, &origin.z);
-    //         controller.setPose(origin);
+    //     cmd.ParseFromArray(zmq_msg_data(&msg), zmq_msg_size(&msg));
+    //     zmq_msg_close(&msg);
+
+    //     protocol::RendererReply reply;
+    //     reply.set_status("success");
+
+    //     printf("Request: %s\n", RendererCommand_RequestType_Name(cmd.type()).c_str());
+
+    //     switch(cmd.type()) {
+    //         case protocol::RendererCommand_RequestType_LoadVolume: {
+    //             VolumeBlocks* vol = VolumeBlocks::LoadFromFile(cmd.volume_filename().c_str());
+    //             controller.loadVolume(vol);
+    //             delete vol;
+    //         } break;
+    //         case protocol::RendererCommand_RequestType_LoadVolumeFromFile: {
+    //         } break;
+    //         case protocol::RendererCommand_RequestType_SetPose: {
+    //             Vector origin(cmd.pose().x(), cmd.pose().y(), cmd.pose().z());
+    //             controller.setPose(origin);
+    //             controller.render();
+    //             controller.present();
+    //         } break;
+    //         case protocol::RendererCommand_RequestType_SetTransferFunction: {
+    //         } break;
     //     }
-    //     if(in == "render") {
-    //         controller.render();
-    //     }
-    //     if(in == "present") {
-    //         controller.barrier();
-    //         controller.present();
+
+    //     zmq_msg_init_size(&msg, reply.ByteSize());
+    //     reply.SerializeToArray(zmq_msg_data(&msg), zmq_msg_size(&msg));
+    //     r = zmq_msg_send(&msg, controller_socket, 0);
+    //     if(r < 0) {
+    //         fprintf(stderr, "zmq_msg_send: %s\n", zmq_strerror(zmq_errno()));
+    //         break;
     //     }
     // }
+
+    while(1) {
+        char* input = readline("> ");
+        if(!input) break;
+        string in(input);
+        free(input);
+        if(in == "volume") {
+            VolumeBlocks* vol = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
+            controller.loadVolume(vol);
+            delete vol;
+        }
+        if(in == "setpose") {
+            char* input = readline("Pose: ");
+            Vector origin;
+            sscanf(input, "%f %f %f", &origin.x, &origin.y, &origin.z);
+            controller.setPose(origin);
+        }
+        if(in == "render") {
+            controller.render();
+        }
+        if(in == "present") {
+            controller.present();
+        }
+    }
 }
