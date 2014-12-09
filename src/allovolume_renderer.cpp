@@ -488,6 +488,9 @@ public:
 int main(int argc, char* argv[]) {
     zmq_context = zmq_ctx_new();
     config.parseFile("allovolume.yaml");
+    char hostname[256];
+    gethostname(hostname, 256);
+    config.parseFile("allovolume.yaml", hostname);
     config.parseFile("allovolume.yaml", "renderer");
     Renderer renderer;
     renderer.startup();
