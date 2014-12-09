@@ -78,17 +78,17 @@ public:
     void thread_process() {
         socket_pubsub = zmq_socket(zmq_context, ZMQ_PUB);
 
-        zmq_setsockopt_ez(socket_pubsub, ZMQ_SNDHWM, config.get<int>("SyncSystem.zmq.sndhwm", 10000));
-        zmq_setsockopt_ez(socket_pubsub, ZMQ_SNDBUF, config.get<int>("SyncSystem.zmq.sndbuf", 0));
-        zmq_setsockopt_ez(socket_pubsub, ZMQ_RATE, config.get<int>("SyncSystem.zmq.rate", 10000000));
+        zmq_setsockopt_ez(socket_pubsub, ZMQ_SNDHWM, config.get<int>("sync.zmq.sndhwm", 10000));
+        zmq_setsockopt_ez(socket_pubsub, ZMQ_SNDBUF, config.get<int>("sync.zmq.sndbuf", 0));
+        zmq_setsockopt_ez(socket_pubsub, ZMQ_RATE, config.get<int>("sync.zmq.rate", 10000000));
 
-        if(zmq_bind(socket_pubsub, config.get<string>("SyncSystem.broadcast").c_str()) < 0) {
+        if(zmq_bind(socket_pubsub, config.get<string>("sync.broadcast").c_str()) < 0) {
             fprintf(stderr, "zmq_bind: %s\n", zmq_strerror(zmq_errno()));
             return;
         }
 
         void* socket_feedback = zmq_socket(zmq_context, ZMQ_PULL);
-        if(zmq_bind(socket_feedback, config.get<string>("SyncSystem.feedback").c_str()) < 0) {
+        if(zmq_bind(socket_feedback, config.get<string>("sync.feedback").c_str()) < 0) {
             fprintf(stderr, "zmq_bind: %s\n", zmq_strerror(zmq_errno()));
             return;
         }
@@ -278,7 +278,8 @@ public:
 
 int main(int argc, char* argv[]) {
     zmq_context = zmq_ctx_new();
-    config.parseFile("allovolume.server.yaml");
+    config.parseFile("allovolume.yaml");
+    config.parseFile("allovolume.yaml", "controller");
     Controller controller;
 
     void* socket_cmdline = zmq_socket(zmq_context, ZMQ_REQ);

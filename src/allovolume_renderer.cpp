@@ -78,7 +78,7 @@ public:
         renderer->setBlendingCoefficient(5e10);
         for(int i = 0; i < slave->num_projections; i++) {
             lenses.push_back(AllosphereLensPointer(AllosphereCalibration::CreateLens(&slave->projections[i])));
-            images.push_back(ImagePointer(Image::Create(360, 240)));
+            images.push_back(ImagePointer(Image::Create(config.get<int>("allovolume.resolution.width", 960), config.get<int>("allovolume.resolution.height", 640))));
         }
         for(int i = 0; i < slave->num_projections; i++) {
             lenses[i]->setEyeSeparation(1e9 * eye);
@@ -93,7 +93,7 @@ public:
         zmq_connect(socket_push, "inproc://render_slaves_push");
 
         void* socket_feedback = zmq_socket(zmq_context, ZMQ_PUSH);
-        zmq_connect(socket_feedback, config.get<string>("SyncSystem.feedback").c_str());
+        zmq_connect(socket_feedback, config.get<string>("sync.feedback").c_str());
 
         protocol::RendererFeedback feedback;
         feedback.set_client_name(client_name);
@@ -299,11 +299,11 @@ public:
     void subscription_thread() {
         void* socket_sub = zmq_socket(zmq_context, ZMQ_SUB);
 
-        zmq_setsockopt_ez(socket_sub, ZMQ_RCVHWM, config.get<int>("SyncSystem.zmq.rcvhwm", 10000));
-        zmq_setsockopt_ez(socket_sub, ZMQ_RCVBUF, config.get<int>("SyncSystem.zmq.rcvbuf", 0));
-        zmq_setsockopt_ez(socket_sub, ZMQ_RATE, config.get<int>("SyncSystem.zmq.rate", 10000000));
+        zmq_setsockopt_ez(socket_sub, ZMQ_RCVHWM, config.get<int>("sync.zmq.rcvhwm", 10000));
+        zmq_setsockopt_ez(socket_sub, ZMQ_RCVBUF, config.get<int>("sync.zmq.rcvbuf", 0));
+        zmq_setsockopt_ez(socket_sub, ZMQ_RATE, config.get<int>("sync.zmq.rate", 10000000));
 
-        zmq_connect(socket_sub, config.get<string>("SyncSystem.broadcast").c_str());
+        zmq_connect(socket_sub, config.get<string>("sync.broadcast").c_str());
         zmq_setsockopt(socket_sub, ZMQ_SUBSCRIBE, "", 0);
 
         void* socket_pub = zmq_socket(zmq_context, ZMQ_PUB);
@@ -487,7 +487,8 @@ public:
 
 int main(int argc, char* argv[]) {
     zmq_context = zmq_ctx_new();
-    config.parseFile("allovolume.client.yaml");
+    config.parseFile("allovolume.yaml");
+    config.parseFile("allovolume.yaml", "renderer");
     Renderer renderer;
     renderer.startup();
 }
