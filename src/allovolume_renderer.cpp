@@ -353,6 +353,7 @@ public:
             stereo_mode = kActiveStereoMode;
             if(!window) {
                 // Unable to create stereo window, fallback to anaglyph.
+                printf("Unable to initialize active stereo, fallback to anaglyph.\n");
                 glfwWindowHint(GLFW_STEREO, GL_FALSE);
                 window = glfwCreateWindow(screen_width, screen_height, "Allosphere Volume Renderer", NULL, NULL);
                 stereo_mode = kAnaglyphStereoMode;
