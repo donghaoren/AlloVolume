@@ -76,6 +76,15 @@ public:
             }
         }
         fprintf(stderr, "AllosphereCalibration: loaded.\n");
+
+        dummy_slave.projections = &dummy_projection;
+        dummy_slave.num_projections = 1;
+        dummy_projection.viewport_x = 0;
+        dummy_projection.viewport_y = 0;
+        dummy_projection.viewport_w = 1;
+        dummy_projection.viewport_h = 1;
+        dummy_projection.warpData = NULL;
+        dummy_projection.blendData = NULL;
     }
 
     virtual ~AllosphereCalibrationImpl() {
@@ -96,12 +105,15 @@ public:
             fprintf(stderr, "AllosphereCalibration: Hostname = '%s'.\n", myhostname);
             return &renderers[myhostname];
         } else {
-            fprintf(stderr, "AllosphereCalibration: Cannot find configuration for '%s', using the first one as fallback.\n", myhostname);
-            return &renderers.begin()->second;
+            // fprintf(stderr, "AllosphereCalibration: Cannot find configuration for '%s', using the first one as fallback.\n", myhostname);
+            // return &renderers.begin()->second;
+            return &dummy_slave;
         }
     }
 
     map<string, RenderSlave> renderers;
+    RenderSlave dummy_slave;
+    Projection dummy_projection;
 };
 
 AllosphereCalibration* AllosphereCalibration::Load(const char* basepath) {

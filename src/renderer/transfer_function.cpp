@@ -35,7 +35,7 @@ namespace {
     }
 
     inline Color tf_interpolate_host(Color* tf, float tf_min, float tf_max, int tf_size, float t) {
-        float pos = clamp01f_host((t - tf_min) / (tf_max - tf_min)) * tf_size - 0.5f;
+        float pos = clamp01f_host((t - tf_min) / (tf_max - tf_min)) * (tf_size - 1.0f);
         int idx = floor(pos);
         idx = clampi(idx, 0, tf_size - 2);
         float diff = pos - idx;
@@ -69,7 +69,7 @@ public:
         for(float i = 0; i < ticks; i++) {
             float t = (float)i / ((float)ticks - 1);
             Color c = tf_interpolate_host(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
-            c.a = t;
+            c.a = t * t;
             blendGaussian(t, 1.0 / ticks / 10.0f, c);
         }
         is_dirty = true;
@@ -77,10 +77,10 @@ public:
 
     void addLinearGradient() {
         for(int i = 0; i < size; i++) {
-            double t = (float)(i + 0.5f) / size;
+            double t = (float)(i) / (size - 1);
             Color c = tf_interpolate_host(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
             c.a = t;
-            content_cpu[i] = c.blendTo(content_cpu[i]);
+            content_cpu[i] = c.blendToCorrected(content_cpu[i]);
         }
         is_dirty = true;
     }
@@ -92,10 +92,10 @@ public:
 
     void blendGaussian(float center, float sigma, Color value) {
         for(int i = 0; i < size; i++) {
-            double t = (float)(i + 0.5f) / size;
+            double t = (float)(i) / (size - 1);
             double gauss = exp(-(center - t) * (center - t) / sigma / sigma / 2.0f);
             Color v = Color(value.r, value.g, value.b, value.a * gauss);
-            content_cpu[i] = v.blendTo(content_cpu[i]);
+            content_cpu[i] = v.blendToCorrected(content_cpu[i]);
         }
         is_dirty = true;
     }

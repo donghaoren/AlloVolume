@@ -36,7 +36,7 @@ inline float clamp01f(float value) { return __saturatef(value); }
 
 __device__
 inline Color tf_interpolate(Color* tf, float tf_min, float tf_max, int tf_size, float t) {
-    float pos = clamp01f((t - tf_min) / (tf_max - tf_min)) * tf_size - 0.5f;
+    float pos = clamp01f((t - tf_min) / (tf_max - tf_min)) * (tf_size - 1.0f);
     int idx = floor(pos);
     idx = clampi(idx, 0, tf_size - 2);
     float diff = pos - idx;

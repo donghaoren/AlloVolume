@@ -59,6 +59,10 @@
     <style type="text/css">
     body {
         overflow: hidden;
+        background: black;
+        font-size: 12px;
+        line-height: 12px;
+        color: #AAA;
     }
     .tf_editor { -webkit-user-select: none; }
     .tf_editor .axis path,
@@ -90,12 +94,20 @@
         padding-top: 10px;
         position: relative;
     }
+    .tf_editor canvas {
+        position: absolute;
+        left: 0; top: 0;
+    }
+    .tf_editor svg {
+        position: absolute;
+        left: 0; top: 0;
+    }
     .tf_editor .controls {
         padding: 20px;
     }
-    .tf_editor .controls input { width: 6em; }
-    .tf_editor .controls input,
-    .tf_editor .controls select {
+    input { width: 6em; }
+    input,
+    select {
         border: none; outline: none;
         background: none;
         padding: 2px 4px;
@@ -105,30 +117,37 @@
         color: white;
         border-radius: 0;
     }
-    .tf_editor .buttons {
+    .buttons {
     }
-    .tf_editor .btn {
+    .btn {
         padding: 2px 4px;
         border: 1px solid #AAA;
         margin: 0px 4px;
         cursor: pointer;
     }
-    .tf_editor .btn:hover {
+    .btn:hover {
         background-color: rgba(255, 255, 255, 0.3);
         color: white;
         border: 1px solid white;
     }
-    .tf_editor canvas {
-        position: absolute;
-        left: 0; top: 0;
-    }
-    .tf_editor svg {
-        position: absolute;
-        left: 0; top: 0;
+    .renderer-controls {
+        padding: 10px 20px;
     }
     </style>
   </head>
   <body>
+    <div class="renderer-controls">
+        <div class="buttons">
+            Blending Coeff.: <input type="text" value="1e+10" id="input-blending-coefficient"></input>
+            Focal Distance: <input type="text" value="1e+10" id="input-focal-distance"></input>
+            Eye Sep.: <input type="text" value="1e+9" id="input-eye-separation"></input>
+            <select id="sel-rendering-method">
+                <option value="RK4">RK4</option>
+                <option value="AdaptiveRKV">AdaptiveRKV</option>
+            </select>
+            <span class="btn" id="btn-update-renderer-controls">Update</span>
+        </div>
+    </div>
     <div id="tf_editor" class="tf_editor"></div>
     <script type="text/javascript">
         var editor = new TransferFunctionEditor(d3.select("#tf_editor"));
@@ -139,17 +158,27 @@
             event.preventDefault();
         }, false);
         var wamp = new Wampy("/ws", { realm: "anonymous" });
+        var response_t = {
+            onSuccess: function() {
+                console.log('RPC successfully called');
+            },
+            onError: function(err) {
+                console.log('RPC call failed with error ' + err);
+            }
+        };
         editor.onTransferFunctionChanged = function(tf) {
-            wamp.call('allovolume.renderer.set_transfer_function', { tf: tf }, {
-                onSuccess: function(stime) {
-                    console.log('RPC successfully called');
-                    console.log('Server time is ' + stime);
-                },
-                onError: function(err) {
-                    console.log('RPC call failed with error ' + err);
-                }
-            });
+            wamp.call('allovolume.renderer.set_transfer_function', { tf: tf }, response_t);
         }
+        d3.select("#btn-update-renderer-controls").on("click", function() {
+            wamp.call('allovolume.renderer.set_lens_parameters', {
+                focal_distance: parseFloat(d3.select("#input-focal-distance").node().value),
+                eye_separation: parseFloat(d3.select("#input-eye-separation").node().value)
+            }, response_t);
+            wamp.call('allovolume.renderer.set_renderer_parameters', {
+                method: d3.select("#sel-rendering-method").node().value,
+                blending_coefficient: parseFloat(d3.select("#input-blending-coefficient").node().value)
+            }, response_t);
+        });
     </script>
   </body>
 </html>

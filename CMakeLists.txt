@@ -76,6 +76,7 @@ CUDA_ADD_LIBRARY (
 
 TARGET_LINK_LIBRARIES (
   allovolume_allosphere_calibration
+    allovolume_renderer
     ${YAMLCPP_LIBRARIES}
     ${FREEIMAGE_LIBRARIES}
 )
@@ -120,6 +121,7 @@ TARGET_LINK_LIBRARIES (
 
 TARGET_LINK_LIBRARIES (
   controller
+    allovolume_renderer
     allovolume_dataset
     readline
     ${ZeroMQ_LIBRARIES}

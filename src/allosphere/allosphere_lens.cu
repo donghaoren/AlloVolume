@@ -21,14 +21,6 @@ __global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int 
     }
 }
 
-__device__ float transform_color(float c) {
-    c = (c - 20.0 / 255.0) / (128.0 / 255.0 - 20.0 / 255.0);
-    if(c < 0) c = 0;
-    if(c > 1) c = 1;
-    c = c * c;
-    return c;
-}
-
 __global__ void allosphere_lens_blend_kernel(Color* data, int width, int height) {
     int px = threadIdx.x + blockDim.x * blockIdx.x;
     int py = threadIdx.y + blockDim.y * blockIdx.y;
@@ -37,14 +29,30 @@ __global__ void allosphere_lens_blend_kernel(Color* data, int width, int height)
         float fy = ((float)py + 0.5f) / (float)height;
         float blend = tex2D(blend_texture, fx, fy);
         Color r = data[py * width + px];
-        r.r = transform_color(r.r);
-        r.g = transform_color(r.g);
-        r.b = transform_color(r.b);
-        r *= blend;
-        r.a = 1.0f;
-        // data[py * width + px] = r;
+        r.a *= blend;
+        r.r *= r.a;
+        r.g *= r.a;
+        r.b *= r.a;
+        r.a = 1;
+        data[py * width + px] = r;
     }
 }
+
+__global__ void allosphere_lens_noblend_kernel(Color* data, int width, int height) {
+    int px = threadIdx.x + blockDim.x * blockIdx.x;
+    int py = threadIdx.y + blockDim.y * blockIdx.y;
+    if(px < width && py < height) {
+        float fx = ((float)px + 0.5f) / (float)width;
+        float fy = ((float)py + 0.5f) / (float)height;
+        Color r = data[py * width + px];
+        r.r *= r.a;
+        r.g *= r.a;
+        r.b *= r.a;
+        r.a = 1;
+        data[py * width + px] = r;
+    }
+}
+
 
 class AllosphereLensImpl : public AllosphereLens {
 public:
@@ -114,8 +122,42 @@ public:
     cudaChannelFormatDesc channel_description_blend;
 };
 
+class AllosphereLensImpl_Wrapper : public AllosphereLens {
+public:
+    AllosphereLensImpl_Wrapper(Lens* lens_) : lens(lens_) { }
+
+    virtual void setParameter(const char* name, const void* value) {
+        lens->setParameter(name, value);
+    }
+
+    virtual void getRays(int width, int height, Ray* rays) {
+        return lens->getRays(width, height, rays);
+    }
+
+    virtual void getRaysGPU(int width, int height, Ray* rays) {
+        return lens->getRaysGPU(width, height, rays);
+    }
+
+    virtual void performBlend(Image* img) {
+        int width = img->getWidth(), height = img->getHeight();
+        Color* pixels = img->getPixelsGPU();
+        allosphere_lens_noblend_kernel<<< dim3(diviur(width, 8), diviur(height, 8), 1), dim3(8, 8, 1) >>>(pixels, width, height);
+        cudaThreadSynchronize();
+    }
+
+    ~AllosphereLensImpl_Wrapper() {
+        delete lens;
+    }
+
+    Lens* lens;
+};
+
 AllosphereLens* AllosphereCalibration::CreateLens(AllosphereCalibration::Projection* projection) {
-    return new AllosphereLensImpl(projection);
+    if(projection->warpData && projection->blendData) {
+        return new AllosphereLensImpl(projection);
+    } else {
+        return new AllosphereLensImpl_Wrapper(Lens::CreatePerspective(PI / 2));
+    }
 }
 
 }

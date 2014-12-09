@@ -1,7 +1,7 @@
 // Transfer function editor.
 
 var TransferFunctionDescription = function() {
-    this.domain = [ 1e-4, 1e7 ];
+    this.domain = [ 1e-3, 1e8 ];
     this.is_log = true;
     this.gradient_stops = [ ];
     this.gradient_alpha_power = 1;
@@ -54,7 +54,7 @@ var blend_color = function(src, dest) {
         b: dest.b * (1 - src.a) * dest.a + src.b * src.a,
         a: dest.a * (1 - src.a) + src.a
     };
-    if(result.a > 1e-4) {
+    if(result.a != 0) {
         result.r /= result.a;
         result.g /= result.a;
         result.b /= result.a;
@@ -62,6 +62,16 @@ var blend_color = function(src, dest) {
     } else {
         return { r: 0, g: 0, b: 0, a: 0 };
     }
+};
+
+var blend_color_old = function(src, dest) {
+    var result = {
+        r: dest.r * (1 - src.a) + src.r * src.a,
+        g: dest.g * (1 - src.a) + src.g * src.a,
+        b: dest.b * (1 - src.a) + src.b * src.a,
+        a: dest.a * (1 - src.a) + src.a * src.a
+    };
+    return result;
 };
 
 TransferFunctionDescription.prototype.scale = function(value) {
@@ -506,15 +516,15 @@ TransferFunctionEditor.prototype.render = function() {
     ctx.restore();
 
     var content = [];
-    var N = 800;
+    var N = 1600;
     for(var i = 0; i < N; i++) {
         var t = i / (N - 1);
         var c = tf.sample(t);
-        content.push(c);
+        content.push([ c.r, c.g, c.b, c.a ]);
     }
     if(this.onTransferFunctionChanged) {
         this.onTransferFunctionChanged({
-            scale: tf.is_log,
+            scale: tf.is_log ? "log" : "linear",
             domain: tf.domain,
             content: content
         });

@@ -41,7 +41,7 @@ message RendererParameters {
 }
 
 message RendererBroadcast {
-    enum RequestType {
+    enum Type {
         LoadVolume             = 10;
         LoadVolumeFromFile     = 11;
         SetPose                = 20;
@@ -51,9 +51,10 @@ message RendererBroadcast {
         SetRGBCurve            = 40;
         Render                 = 100;
         Present                = 101;
+        Barrier                = 500;
     }
 
-    required RequestType type        = 1;
+    required Type type        = 1;
 
     optional Pose pose = 2;
     optional RGBCurve rgb_curve      = 3;
@@ -65,24 +66,63 @@ message RendererBroadcast {
 
     optional LensParameters lens_parameters = 20;
     optional RendererParameters renderer_parameters = 21;
+
+    optional int32 barrier_info = 50;
 }
 
-message RendererCommand {
-    enum RequestType {
-        LoadVolume           = 0;
-        LoadVolumeFromFile   = 1;
-        SetPose              = 2;
-        SetTransferFunction  = 3;
-        Render               = 4;
-        Present              = 5;
+message RendererFeedback {
+    enum Type {
+        Register                 = 1;
+        BarrierReady             = 2;
     }
 
-    required RequestType type = 1;
-    optional TransferFunction transfer_function = 4;
-    optional string volume_filename = 2;
-    optional Pose pose = 5;
+    required string client_name  = 1;
+    required Type type           = 2;
+    optional int32 barrier_info  = 50;
 }
 
-message RendererReply {
+message ControllerRequest {
+    enum Type {
+        LoadVolume            = 0;
+        LoadVolumeFromFile    = 1;
+        SetPose               = 2;
+        SetTransferFunction   = 3;
+        SetRGBCurve           = 4;
+        SetLensParameters     = 5;
+        SetRendererParameters = 6;
+        Render                = 7;
+        Present               = 8;
+    }
+
+    required Type type                              = 1;
+
+    optional TransferFunction transfer_function     = 10;
+    optional string volume_filename                 = 11;
+
+    optional Pose pose                                  = 20;
+    optional RGBCurve rgb_curve                         = 21;
+    optional LensParameters lens_parameters             = 22;
+    optional RendererParameters renderer_parameters     = 23;
+}
+
+message ParameterChangeEvent {
+    enum Type {
+        SetPose                = 1;
+        SetTransferFunction    = 2;
+        SetRGBCurve            = 3;
+        SetLensParameters      = 4;
+        SetRendererParameters  = 5;
+    }
+
+    required Type type         = 1;
+
+    optional TransferFunction transfer_function     = 10;
+    optional Pose pose                              = 11;
+    optional RGBCurve rgb_curve                     = 12;
+    optional LensParameters lens_parameters         = 13;
+    optional RendererParameters renderer_parameters = 14;
+}
+
+message ControllerResponse {
     required string status = 1;
 }

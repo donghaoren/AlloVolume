@@ -119,6 +119,20 @@ struct Color {
             a * a + (1.0 - a) * c.a
         );
     }
+    GPUEnable Color blendToCorrected(Color c) {
+        Color result(
+            a * r + (1.0 - a) * c.r * c.a,
+            a * g + (1.0 - a) * c.g * c.a,
+            a * b + (1.0 - a) * c.b * c.a,
+            a + (1.0 - a) * c.a
+        );
+        if(result.a != 0) {
+            result.r /= result.a;
+            result.g /= result.a;
+            result.b /= result.a;
+        } else result = Color(0, 0, 0, 0);
+        return result;
+    }
     GPUEnable Color blendToDifferential(Color c, float ratio) {
         float dt = pow(1 - a, ratio);
         return Color(
