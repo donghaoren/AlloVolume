@@ -128,7 +128,7 @@ public:
                 } break;
                 case protocol::RendererBroadcast_Type_SetLensParameters: {
                     for(int i = 0; i < slave->num_projections; i++) {
-                        lenses[i]->setEyeSeparation(msg.lens_parameters().eye_separation());
+                        lenses[i]->setEyeSeparation(msg.lens_parameters().eye_separation() * eye);
                         lenses[i]->setFocalDistance(msg.lens_parameters().focal_distance());
                     }
                 } break;
