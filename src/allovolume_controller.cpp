@@ -170,7 +170,7 @@ public:
                             for(int x = 0; x < vp_w; x++) {
                                 int px = x + vp_x;
                                 int py = y + vp_y;
-                                hd_rendering_pixels[py * hd_rendering_width + px] = task_pixels[y * vp_h + x];
+                                hd_rendering_pixels[py * hd_rendering_width + px] = task_pixels[y * vp_w + x];
                             }
                         }
 
