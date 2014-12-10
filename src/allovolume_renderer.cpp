@@ -222,6 +222,7 @@ public:
                         resp.set_pixel_data(img->getPixels(), sizeof(Color) * task.task_vp_w() * task.task_vp_h());
 
                         delete img;
+                        delete render_lens;
 
                         zmq_protobuf_send(feedback, socket_feedback);
 
@@ -465,17 +466,12 @@ public:
     }
 
     void render_image(GPURenderThread& renderer) {
-        printf("Render image!\n");
         if(!renderer.initialize_complete) return;
 
         int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
         int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
 
-        printf("Render H 1 image!\n");
-
         renderer.uploadImages();
-
-        printf("Render H 2 image!\n");
 
         if(renderer.textures.size() >= render_slave->num_projections) {
             for(int i = 0; i < render_slave->num_projections; i++) {
@@ -489,8 +485,6 @@ public:
                 glEnd();
             }
         }
-
-        printf("Render H 3 image!\n");
     }
 
     void display() {
