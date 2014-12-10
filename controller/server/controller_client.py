@@ -12,4 +12,4 @@ controller.connect("tcp://127.0.0.1:55556")
 def HDRendering(filename, lens, width = 3000, height = 2000):
     msg = protocol.ControllerRequest()
     msg.type = protocol.ControllerRequest.HDRendering
-
+    msg.hd_rendering_task
