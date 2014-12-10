@@ -4,10 +4,14 @@ import zmq
 import struct
 import math
 
+import yaml
+
+config = yaml.load(open("allovolume.yaml").read().decode("utf-8"))
+
 zmq_context = zmq.Context()
 
 controller = zmq.Socket(zmq_context, zmq.REQ)
-controller.connect("tcp://127.0.0.1:55556")
+controller.connect(config['allovolume']['controller'])
 
 
 def HDRendering(filename, width = 3000, height = 2000, lens = "perspective", fovx = 90):

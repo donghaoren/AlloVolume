@@ -19,8 +19,7 @@ class ControllerServer(ApplicationSession):
     def onJoin(self, details):
         print("Session starting up...")
 
-        server = zmq.Socket(zmq_context, zmq.REQ)
-        server.connect("tcp://127.0.0.1:55556")
+        from controller_client import server
 
         def set_volume(filename):
             # Serialize the transfer function
