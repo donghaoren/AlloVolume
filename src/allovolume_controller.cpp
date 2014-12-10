@@ -303,8 +303,8 @@ public:
                     case protocol::ControllerRequest_Type_HDRendering: {
 
                         const protocol::HDRenderingTask& task = request.hd_rendering_task();
-                        int block_width = 400;
-                        int block_height = 400;
+                        int block_width = 200;
+                        int block_height = 200;
                         int total_width = task.total_width();
                         int total_height = task.total_height();
 
@@ -316,7 +316,7 @@ public:
                                 int width = min(block_width, total_width - x);
                                 int height = min(block_height, total_height - y);
                                 char task_id[64];
-                                sprintf(task_id, "%d,%d;%dx%d", x, y, width, height);
+                                sprintf(task_id, "t.%d.%d.%d.%d", x, y, width, height);
                                 protocol::HDRenderingTask distributed_task = task;
                                 distributed_task.set_task_vp_x(x);
                                 distributed_task.set_task_vp_y(y);
@@ -442,8 +442,8 @@ int main(int argc, char* argv[]) {
             protocol::HDRenderingTask& task = *req.mutable_hd_rendering_task();
 
             task.set_lens_type(protocol::HDRenderingTask_LensType_Equirectangular);
-            task.set_total_width(3200);
-            task.set_total_height(1600);
+            task.set_total_width(500);
+            task.set_total_height(500);
 
             task.mutable_lens_parameters()->set_eye_separation(0);
             task.mutable_lens_parameters()->set_focal_distance(1);

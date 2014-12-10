@@ -221,6 +221,8 @@ public:
                         resp.set_task_vp_h(task.task_vp_h());
                         resp.set_pixel_data(img->getPixels(), sizeof(Color) * task.task_vp_w() * task.task_vp_h());
 
+                        img->save((task.task_id() + ".png").c_str(), "png16");
+
                         delete img;
                         delete render_lens;
 
