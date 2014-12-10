@@ -93,6 +93,8 @@ public:
             lenses[i]->setFocalDistance(1e10);
         }
 
+        initialize_complete = true;
+
         void* socket_sub = zmq_socket(zmq_context, ZMQ_SUB);
         zmq_connect(socket_sub, "inproc://render_slaves");
         zmq_setsockopt(socket_sub, ZMQ_SUBSCRIBE, "", 0);
@@ -275,10 +277,10 @@ public:
         is_dirty = true;
         // Spawn the rendering thread.
         pthread_create(&thread, NULL, thread_proc, this);
-        initialize_complete = true;
     }
 
     void uploadImages() {
+        if(!initialize_complete) return;
         if(is_dirty && !textures.empty()) {
             for(int i = 0; i < slave->num_projections; i++) {
                 glBindTexture(GL_TEXTURE_2D, textures[i]);
