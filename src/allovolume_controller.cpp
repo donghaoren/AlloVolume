@@ -442,8 +442,8 @@ int main(int argc, char* argv[]) {
             protocol::HDRenderingTask& task = *req.mutable_hd_rendering_task();
 
             task.set_lens_type(protocol::HDRenderingTask_LensType_Equirectangular);
-            task.set_total_width(10000);
-            task.set_total_height(5000);
+            task.set_total_width(3000);
+            task.set_total_height(1500);
             Pose pose;
             pose.position = Vector(-1e10, 0, 0);
             task.mutable_pose()->set_x(pose.position.x);
