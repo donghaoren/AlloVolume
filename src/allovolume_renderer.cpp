@@ -330,10 +330,10 @@ public:
         calibration = AllosphereCalibration::Load((string(getenv("HOME")) + "/calibration-current").c_str());
         render_slave = calibration->getRenderer();
 
+        initWindow();
+
         int device_count;
         cudaGetDeviceCount(&device_count);
-
-        initWindow();
 
         if(stereo_mode == kActiveStereoMode || stereo_mode == kAnaglyphStereoMode) {
             renderer_left.initialize(0 % device_count, 0, render_slave, 1);
