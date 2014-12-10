@@ -202,8 +202,8 @@ public:
                         }
                         renderer->setLens(render_lens);
                         Pose pose;
-                        pose.position = Vector(msg.pose().x(), msg.pose().y(), msg.pose().z());
-                        pose.rotation = Quaternion(msg.pose().qw(), msg.pose().qx(), msg.pose().qy(), msg.pose().qz());
+                        pose.position = Vector(task.pose().x(), task.pose().y(), task.pose().z());
+                        pose.rotation = Quaternion(task.pose().qw(), task.pose().qx(), task.pose().qy(), task.pose().qz());
                         renderer->setPose(pose);
                         renderer->setTransferFunction(tf.get());
                         Image* img = Image::Create(task.task_vp_w(), task.task_vp_h());
