@@ -465,6 +465,8 @@ public:
     }
 
     void render_image(GPURenderThread& renderer) {
+        if(!renderer.initialize_complete) return;
+
         int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
         int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
 
