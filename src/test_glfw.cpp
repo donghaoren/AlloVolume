@@ -8,8 +8,14 @@
 
 int max(int a, int b) { return a > b ? a : b; }
 
+void error_callback(int error, const char* description)
+{
+    fputs(description, stderr);
+}
+
 int main() {
     glfwInit();
+    glfwSetErrorCallback(error_callback);
     int monitor_count = 0;
     GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
 
