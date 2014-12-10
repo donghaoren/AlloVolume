@@ -71,7 +71,9 @@ public:
     Pose current_pose;
 
 
-    GPURenderThread() { }
+    GPURenderThread() {
+        initialize_complete = false;
+    }
 
     static void* thread_proc(void* this_) {
         ((GPURenderThread*)this_)->thread_entrypoint();
@@ -272,6 +274,7 @@ public:
         is_dirty = true;
         // Spawn the rendering thread.
         pthread_create(&thread, NULL, thread_proc, this);
+        initialize_complete = true;
     }
 
     void uploadImages() {
@@ -294,6 +297,8 @@ public:
     int gpu_id;
     bool needs_upload_tf;
     bool needs_render;
+
+    bool initialize_complete;
 
     float eye;
 
