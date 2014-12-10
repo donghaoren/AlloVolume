@@ -86,6 +86,11 @@ ADD_EXECUTABLE (
     src/test.cpp
 )
 
+ADD_EXECUTABLE (
+  test_glfw
+    src/test_glfw.cpp
+)
+
 ADD_EXECUTABLE ( dataset_converter
     src/dataset_converter.cpp
 )
@@ -127,6 +132,12 @@ TARGET_LINK_LIBRARIES (
     ${ZeroMQ_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
     ${Protobuf_LIBRARIES}
+)
+
+TARGET_LINK_LIBRARIES (
+  test_glfw
+    ${GLFW_LIBRARIES}
+    ${OPENGL_LIBRARIES}
 )
 
 TARGET_LINK_LIBRARIES (
