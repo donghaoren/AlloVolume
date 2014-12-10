@@ -19,7 +19,7 @@ class ControllerServer(ApplicationSession):
     def onJoin(self, details):
         print("Session starting up...")
 
-        from controller_client import server
+        from controller_client import controller as server
 
         def set_volume(filename):
             # Serialize the transfer function
