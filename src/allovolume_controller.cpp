@@ -108,6 +108,10 @@ public:
         set<string> barrier_clients;
         set<string> all_clients;
 
+        set<string> hd_rendering_tasks_waiting;
+        Color* hd_rendering_pixels;
+        int hd_rendering_width, hd_rendering_height;
+
         while(1) {
             zmq_pollitem_t items[2];
             items[0].socket = socket_feedback;
@@ -147,6 +151,35 @@ public:
                                 } break;
                             }
                             printf("Barrier cleared, info = %d!\n", feedback.barrier_info());
+                        }
+
+                    } break;
+                    case protocol::RendererFeedback_Type_HDRenderingResponse: {
+
+                        const protocol::HDRenderingResponse& resp = feedback.hd_rendering_response();
+
+                        printf("HDRenderingResponse: %s\n", resp.task_id().c_str());
+
+
+                        Color* task_pixels = (Color*)&resp.pixel_data()[0];
+                        int vp_x = resp.task_vp_x();
+                        int vp_y = resp.task_vp_y();
+                        int vp_w = resp.task_vp_w();
+                        int vp_h = resp.task_vp_h();
+                        for(int y = 0; y < vp_h; y++) {
+                            for(int x = 0; x < vp_w; x++) {
+                                int px = x + vp_x;
+                                int py = y + vp_y;
+                                hd_rendering_pixels[py * hd_rendering_width + px] = task_pixels[y * vp_h + x];
+                            }
+                        }
+
+                        hd_rendering_tasks_waiting.erase(resp.task_id());
+
+                        if(hd_rendering_tasks_waiting.empty()) {
+                            printf("Success!\n");
+                            Image::WriteImageFile("hd.png", "png16", hd_rendering_width, hd_rendering_height, hd_rendering_pixels);
+                            delete [] hd_rendering_pixels;
                         }
 
                     } break;
@@ -266,6 +299,45 @@ public:
                         set_needs_render();
 
                     } break;
+                    case protocol::ControllerRequest_Type_HDRendering: {
+
+                        const protocol::HDRenderingTask& task = request.hd_rendering_task();
+                        int block_width = 400;
+                        int block_height = 400;
+                        int total_width = task.total_width();
+                        int total_height = task.total_height();
+
+                        vector<string> slaves(all_clients.begin(), all_clients.end());
+                        int choice_index = 0;
+
+                        for(int x = 0; x < total_width; x += block_width) {
+                            for(int y = 0; y < total_height; y += block_height) {
+                                int width = min(block_width, total_width - x);
+                                int height = min(block_height, total_height - y);
+                                char task_id[64];
+                                sprintf(task_id, "%d,%d;%dx%d", x, y, width, height);
+                                protocol::HDRenderingTask distributed_task = task;
+                                distributed_task.set_task_vp_x(x);
+                                distributed_task.set_task_vp_y(y);
+                                distributed_task.set_task_vp_w(width);
+                                distributed_task.set_task_vp_h(height);
+                                distributed_task.set_task_id(task_id);
+                                distributed_task.set_task_slave(slaves[choice_index]);
+                                choice_index = (choice_index + 1) % slaves.size();
+
+                                hd_rendering_tasks_waiting.insert(task_id);
+
+                                protocol::RendererBroadcast msg;
+                                msg.set_type(protocol::RendererBroadcast_Type_HDRendering);
+                                *msg.mutable_hd_rendering_task() = distributed_task;
+                                zmq_protobuf_send(msg, socket_pubsub);
+                            }
+                        }
+                        hd_rendering_width = total_width;
+                        hd_rendering_height = total_height;
+                        hd_rendering_pixels = new Color[total_width * total_height];
+
+                    } break;
                 }
 
                 protocol::ControllerResponse response;
@@ -358,6 +430,31 @@ int main(int argc, char* argv[]) {
             // tf.set_size(tf_real->getSize());
             tf.set_content(tf_real->getContent(), sizeof(Color) * tf_real->getSize());
             delete tf_real;
+
+            zmq_protobuf_send(req, socket_cmdline);
+
+        } else
+        if(args[0] == "hdrendering") {
+            protocol::ControllerRequest req;
+            req.set_type(protocol::ControllerRequest_Type_HDRendering);
+
+            protocol::HDRenderingTask& task = *req.mutable_hd_rendering_task();
+
+            task.set_lens_type(protocol::HDRenderingTask_LensType_Equirectangular);
+            task.set_total_width(1000);
+            task.set_total_height(500);
+            Pose pose;
+            pose.position = Vector(-1e10, 0, 0);
+            task.mutable_pose()->set_x(pose.position.x);
+            task.mutable_pose()->set_y(pose.position.y);
+            task.mutable_pose()->set_z(pose.position.z);
+            task.mutable_pose()->set_qw(pose.rotation.w);
+            task.mutable_pose()->set_qx(pose.rotation.v.x);
+            task.mutable_pose()->set_qy(pose.rotation.v.y);
+            task.mutable_pose()->set_qz(pose.rotation.v.z);
+
+            task.mutable_lens_parameters()->set_eye_separation(0);
+            task.mutable_lens_parameters()->set_focal_distance(1);
 
             zmq_protobuf_send(req, socket_cmdline);
 

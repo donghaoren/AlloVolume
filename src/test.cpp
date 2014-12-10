@@ -416,7 +416,7 @@ void super3d_test() {
     //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
     renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
-    int width = 2000, height = 2000;
+    int width = 400, height = 400;
 
     float radius = pose.position.len();
     float eye_separation = radius / 10.0;

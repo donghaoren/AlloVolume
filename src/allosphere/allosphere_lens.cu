@@ -94,8 +94,10 @@ public:
             focal_distance = *(float*)value;
         }
     }
-    virtual void getRays(int width, int height, Ray* rays) { }
-    virtual void getRaysGPU(int width, int height, Ray* rays) {
+    virtual void getRays(Viewport vp, Ray* rays) { }
+    virtual void getRaysGPU(Viewport vp, Ray* rays) {
+        int width = vp.vp_width;
+        int height = vp.vp_height;
         cudaBindTextureToArray(warp_texture, warp_data, channel_description);
         allosphere_lens_get_rays_kernel<<< dim3(diviur(width, 8), diviur(height, 8), 1), dim3(8, 8, 1) >>>(rays, width, height, eye_separation, focal_distance);
         cudaThreadSynchronize();
@@ -130,12 +132,12 @@ public:
         lens->setParameter(name, value);
     }
 
-    virtual void getRays(int width, int height, Ray* rays) {
-        return lens->getRays(width, height, rays);
+    virtual void getRays(Viewport vp, Ray* rays) {
+        return lens->getRays(vp, rays);
     }
 
-    virtual void getRaysGPU(int width, int height, Ray* rays) {
-        return lens->getRaysGPU(width, height, rays);
+    virtual void getRaysGPU(Viewport vp, Ray* rays) {
+        return lens->getRaysGPU(vp, rays);
     }
 
     virtual void performBlend(Image* img) {

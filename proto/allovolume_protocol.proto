@@ -36,73 +36,118 @@ message RendererParameters {
         RK4                    = 1;
         AdaptiveRKV            = 2;
     }
-    required RenderingMethod method     = 1;
-    required float blending_coefficient = 2;
+    required RenderingMethod method      = 1;
+    required float blending_coefficient  = 2;
+}
+
+message HDRenderingTask {
+    enum LensType {
+        Equirectangular = 1;
+        Perspective     = 2;
+    }
+    required LensType lens_type                       = 1;
+    required LensParameters lens_parameters           = 2;
+
+    required Pose pose               = 3;
+    required int32 total_width       = 4;
+    required int32 total_height      = 5;
+
+    optional float perspective_fovx  = 10;
+
+    optional string task_id          = 51;
+    optional string task_slave       = 52;
+    optional int32 task_vp_x         = 53;
+    optional int32 task_vp_y         = 54;
+    optional int32 task_vp_w         = 55;
+    optional int32 task_vp_h         = 56;
+}
+
+message HDRenderingResponse {
+    required string task_id          = 1;
+    optional int32 task_vp_x         = 2;
+    optional int32 task_vp_y         = 3;
+    optional int32 task_vp_w         = 4;
+    optional int32 task_vp_h         = 5;
+    required bytes pixel_data        = 6;
 }
 
 message RendererBroadcast {
     enum Type {
+        Render                 = 1;
+        Present                = 2;
+
+        Barrier                = 5;
+
         LoadVolume             = 10;
         LoadVolumeFromFile     = 11;
+
         SetPose                = 20;
-        SetLensParameters      = 21;
-        SetRendererParameters  = 22;
-        SetTransferFunction    = 30;
-        SetRGBCurve            = 40;
-        Render                 = 100;
-        Present                = 101;
-        Barrier                = 500;
+        SetTransferFunction    = 21;
+        SetRGBCurve            = 22;
+        SetLensParameters      = 23;
+        SetRendererParameters  = 24;
+
+        HDRendering            = 100;
     }
 
-    required Type type        = 1;
+    required Type type                               = 1;
 
-    optional Pose pose = 2;
-    optional RGBCurve rgb_curve      = 3;
+    optional Pose pose                               = 2;
+    optional RGBCurve rgb_curve                      = 3;
 
-    optional TransferFunction transfer_function = 5;
+    optional TransferFunction transfer_function      = 5;
 
-    optional string volume_filename  = 10;
-    optional bytes volume_data       = 11;
+    optional string volume_filename                  = 10;
+    optional bytes volume_data                       = 11;
 
-    optional LensParameters lens_parameters = 20;
-    optional RendererParameters renderer_parameters = 21;
+    optional LensParameters lens_parameters          = 20;
+    optional RendererParameters renderer_parameters  = 21;
 
-    optional int32 barrier_info = 50;
+    optional HDRenderingTask hd_rendering_task       = 100;
+
+    optional int32 barrier_info                      = 50;
 }
 
 message RendererFeedback {
     enum Type {
         Register                 = 1;
         BarrierReady             = 2;
+        HDRenderingResponse      = 3;
     }
 
     required string client_name  = 1;
     required Type type           = 2;
+
     optional int32 barrier_info  = 50;
+
+    optional HDRenderingResponse hd_rendering_response = 100;
 }
 
 message ControllerRequest {
     enum Type {
-        LoadVolume            = 0;
-        LoadVolumeFromFile    = 1;
-        SetPose               = 2;
-        SetTransferFunction   = 3;
-        SetRGBCurve           = 4;
-        SetLensParameters     = 5;
-        SetRendererParameters = 6;
-        Render                = 7;
-        Present               = 8;
+        Render                = 1;
+        Present               = 2;
+        LoadVolume            = 10;
+        LoadVolumeFromFile    = 11;
+        SetPose               = 20;
+        SetTransferFunction   = 21;
+        SetRGBCurve           = 22;
+        SetLensParameters     = 23;
+        SetRendererParameters = 24;
+        HDRendering           = 200;
     }
 
-    required Type type                              = 1;
+    required Type type                                  = 1;
 
-    optional TransferFunction transfer_function     = 10;
-    optional string volume_filename                 = 11;
+    optional TransferFunction transfer_function         = 10;
+    optional string volume_filename                     = 11;
 
     optional Pose pose                                  = 20;
     optional RGBCurve rgb_curve                         = 21;
     optional LensParameters lens_parameters             = 22;
     optional RendererParameters renderer_parameters     = 23;
+
+    optional HDRenderingTask hd_rendering_task          = 100;
 }
 
 message ParameterChangeEvent {

@@ -55,6 +55,13 @@ public:
         Vector origin, direction;
     };
 
+    struct Viewport {
+        // Size of the big image.
+        int width, height;
+        // Size of this viewport.
+        int vp_x, vp_y, vp_width, vp_height;
+    };
+
     virtual void setParameter(const char* name, const void* value) = 0;
 
     template<typename T>
@@ -64,8 +71,22 @@ public:
     void setEyeSeparation(float value) { set<float>("eye_separation", value); }
     void setFocalDistance(float value) { set<float>("focal_distance", value); }
 
-    virtual void getRays(int width, int height, Ray* rays) = 0;
-    virtual void getRaysGPU(int width, int height, Ray* rays) = 0;
+    virtual void getRays(Viewport vp, Ray* rays) = 0;
+    virtual void getRaysGPU(Viewport vp, Ray* rays) = 0;
+
+    void getRays(int width, int height, Ray* rays) {
+        Viewport vp;
+        vp.width = width; vp.height = height;
+        vp.vp_x = 0; vp.vp_y = 0; vp.vp_width = width; vp.vp_height = height;
+        return getRays(vp, rays);
+    }
+
+    void getRaysGPU(int width, int height, Ray* rays) {
+        Viewport vp;
+        vp.width = width; vp.height = height;
+        vp.vp_x = 0; vp.vp_y = 0; vp.vp_width = width; vp.vp_height = height;
+        return getRaysGPU(vp, rays);
+    }
 
     virtual ~Lens() { }
 
@@ -104,6 +125,7 @@ public:
     virtual void setRaycastingMethod(RaycastingMethod method) = 0;
 
     // Render!
+    virtual void render(int x0, int y0, int total_width, int total_height) = 0;
     virtual void render() = 0;
     virtual ~VolumeRenderer() { }
 

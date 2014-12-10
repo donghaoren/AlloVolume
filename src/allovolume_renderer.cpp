@@ -68,6 +68,8 @@ public:
 
     int thread_id;
 
+    Pose current_pose;
+
 
     GPURenderThread() { }
 
@@ -79,7 +81,7 @@ public:
         cudaSetDevice(gpu_id);
         renderer.reset(VolumeRenderer::CreateGPU());
         tf.reset(TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16));
-        renderer->setBlendingCoefficient(5e10);
+        renderer->setBlendingCoefficient(1e9);
         for(int i = 0; i < slave->num_projections; i++) {
             lenses.push_back(AllosphereLensPointer(AllosphereCalibration::CreateLens(&slave->projections[i])));
             images.push_back(ImagePointer(Image::Create(config.get<int>("allovolume.resolution.width", 960), config.get<int>("allovolume.resolution.height", 640))));
@@ -129,6 +131,7 @@ public:
                     pose.position = Vector(msg.pose().x(), msg.pose().y(), msg.pose().z());
                     pose.rotation = Quaternion(msg.pose().qw(), msg.pose().qx(), msg.pose().qy(), msg.pose().qz());
                     renderer->setPose(pose);
+                    current_pose = pose;
                 } break;
                 case protocol::RendererBroadcast_Type_SetLensParameters: {
                     for(int i = 0; i < slave->num_projections; i++) {
@@ -179,6 +182,49 @@ public:
                     feedback.set_type(protocol::RendererFeedback_Type_BarrierReady);
                     feedback.set_barrier_info(msg.barrier_info());
                     zmq_protobuf_send(feedback, socket_feedback);
+                } break;
+                case protocol::RendererBroadcast_Type_HDRendering: {
+                    const protocol::HDRenderingTask& task = msg.hd_rendering_task();
+                    if(task.task_slave() == client_name) {
+                        printf("HDRendering: %s\n", task.task_id().c_str());
+                        Lens* render_lens;
+                        switch(task.lens_type()) {
+                            case protocol::HDRenderingTask_LensType_Perspective: {
+                                render_lens = Lens::CreatePerspective(task.perspective_fovx());
+                            } break;
+                            case protocol::HDRenderingTask_LensType_Equirectangular: {
+                                render_lens = Lens::CreateEquirectangular();
+                            } break;
+                        }
+                        renderer->setLens(render_lens);
+                        Pose pose;
+                        pose.position = Vector(msg.pose().x(), msg.pose().y(), msg.pose().z());
+                        pose.rotation = Quaternion(msg.pose().qw(), msg.pose().qx(), msg.pose().qy(), msg.pose().qz());
+                        renderer->setPose(pose);
+                        renderer->setTransferFunction(tf.get());
+                        Image* img = Image::Create(task.task_vp_w(), task.task_vp_h());
+                        renderer->setImage(img);
+                        renderer->render(task.task_vp_x(), task.task_vp_y(), task.total_width(), task.total_height());
+                        img->setNeedsDownload();
+
+                        protocol::RendererFeedback feedback;
+                        feedback.set_client_name(client_name);
+                        feedback.set_type(protocol::RendererFeedback_Type_HDRenderingResponse);
+
+                        protocol::HDRenderingResponse& resp = *feedback.mutable_hd_rendering_response();
+                        resp.set_task_id(task.task_id());
+                        resp.set_task_vp_x(task.task_vp_x());
+                        resp.set_task_vp_y(task.task_vp_y());
+                        resp.set_task_vp_w(task.task_vp_w());
+                        resp.set_task_vp_h(task.task_vp_h());
+                        resp.set_pixel_data(img->getPixels(), sizeof(Color) * task.task_vp_w() * task.task_vp_h());
+
+                        delete img;
+
+                        zmq_protobuf_send(feedback, socket_feedback);
+
+                        renderer->setPose(current_pose);
+                    }
                 } break;
             }
         }

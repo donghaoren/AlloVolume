@@ -53,7 +53,7 @@ __device__ inline bool RungeKuttaVerner(
             t = t + h;
             w = w_new;
         }
-        real_t delta = 0.84 * pow(TOL / R, 1.0f/5.0f); // fifth-order method.
+        real_t delta = 0.84 * pow(TOL / R, 1.0/5.0); // fifth-order method.
         if(delta < 0.1) {
             h = 0.1 * h;
         } else if(delta > 4) {

@@ -13,31 +13,34 @@ namespace allovolume {
 
 #define PI 3.141592653589793
 
-struct Vector {
-    float x, y, z;
-    GPUEnable Vector() { }
-    GPUEnable Vector(float v) { x = y = z = v; }
-    GPUEnable Vector(float x_, float y_, float z_) : x(x_), y(y_), z(z_) { }
-    GPUEnable Vector& operator += (const Vector& v) { x += v.x; y += v.y; z += v.z; return *this; }
-    GPUEnable Vector& operator -= (const Vector& v) { x -= v.x; y -= v.y; z -= v.z; return *this; }
-    GPUEnable Vector& operator *= (float s) { x *= s; y *= s; z *= s; return *this; }
-    GPUEnable Vector& operator /= (float s) { x /= s; y /= s; z /= s; return *this; }
-    GPUEnable Vector operator + (const Vector& v) const { return Vector(x + v.x, y + v.y, z + v.z); }
-    GPUEnable Vector operator - (const Vector& v) const { return Vector(x - v.x, y - v.y, z - v.z); }
-    GPUEnable Vector operator * (const Vector& v) const { return Vector(x * v.x, y * v.y, z * v.z); }
-    GPUEnable Vector operator / (const Vector& v) const { return Vector(x / v.x, y / v.y, z / v.z); }
-    GPUEnable Vector operator - () const { return Vector(-x, -y, -z); }
-    GPUEnable Vector operator * (float s) const { return Vector(x * s, y * s, z * s); }
-    GPUEnable Vector operator / (float s) const { return Vector(x / s, y / s, z / s); }
-    GPUEnable float dot(const Vector& v) const { return x * v.x + y * v.y + z * v.z; }
-    GPUEnable float len2() const { return x * x + y * y + z * z; }
+template<typename FloatT>
+struct Vector_ {
+    FloatT x, y, z;
+    GPUEnable Vector_() { }
+    template<typename T2>
+    GPUEnable Vector_(const Vector_<T2>& v) : x(v.x), y(v.y), z(v.z) { }
+    GPUEnable Vector_(FloatT v) { x = y = z = v; }
+    GPUEnable Vector_(FloatT x_, FloatT y_, FloatT z_) : x(x_), y(y_), z(z_) { }
+    GPUEnable Vector_& operator += (const Vector_& v) { x += v.x; y += v.y; z += v.z; return *this; }
+    GPUEnable Vector_& operator -= (const Vector_& v) { x -= v.x; y -= v.y; z -= v.z; return *this; }
+    GPUEnable Vector_& operator *= (FloatT s) { x *= s; y *= s; z *= s; return *this; }
+    GPUEnable Vector_& operator /= (FloatT s) { x /= s; y /= s; z /= s; return *this; }
+    GPUEnable Vector_ operator + (const Vector_& v) const { return Vector_(x + v.x, y + v.y, z + v.z); }
+    GPUEnable Vector_ operator - (const Vector_& v) const { return Vector_(x - v.x, y - v.y, z - v.z); }
+    GPUEnable Vector_ operator * (const Vector_& v) const { return Vector_(x * v.x, y * v.y, z * v.z); }
+    GPUEnable Vector_ operator / (const Vector_& v) const { return Vector_(x / v.x, y / v.y, z / v.z); }
+    GPUEnable Vector_ operator - () const { return Vector_(-x, -y, -z); }
+    GPUEnable Vector_ operator * (FloatT s) const { return Vector_(x * s, y * s, z * s); }
+    GPUEnable Vector_ operator / (FloatT s) const { return Vector_(x / s, y / s, z / s); }
+    GPUEnable FloatT dot(const Vector_& v) const { return x * v.x + y * v.y + z * v.z; }
+    GPUEnable FloatT len2() const { return x * x + y * y + z * z; }
     double len2_double() const { return (double)x * (double)x + (double)y * (double)y + (double)z * (double)z; }
-    GPUEnable float len() const { return std::sqrt(x * x + y * y + z * z); }
-    GPUEnable Vector normalize() const { return *this / len(); }
-    GPUEnable bool operator <= (const Vector& v) const { return x <= v.x && y <= v.y && z <= v.z; }
-    GPUEnable bool operator >= (const Vector& v) const { return x >= v.x && y >= v.y && z >= v.z; }
-    GPUEnable Vector cross(const Vector& v) const {
-        return Vector(
+    GPUEnable FloatT len() const { return std::sqrt(x * x + y * y + z * z); }
+    GPUEnable Vector_ normalize() const { return *this / len(); }
+    GPUEnable bool operator <= (const Vector_& v) const { return x <= v.x && y <= v.y && z <= v.z; }
+    GPUEnable bool operator >= (const Vector_& v) const { return x >= v.x && y >= v.y && z >= v.z; }
+    GPUEnable Vector_ cross(const Vector_& v) const {
+        return Vector_(
             y * v.z - z * v.y,
             z * v.x - x * v.z,
             x * v.y - y * v.x
@@ -45,8 +48,15 @@ struct Vector {
     }
 };
 
+typedef Vector_<float> Vector;
+typedef Vector_<double> Vector_d;
+
 struct Vector4 {
     float x, y, z, w;
+};
+
+struct Vector4_d {
+    double x, y, z, w;
 };
 
 struct Quaternion {
@@ -106,21 +116,24 @@ inline int diviur(int a, int b) {
     return a / b + 1;
 }
 
-struct Color {
-    float r, g, b, a;
-    GPUEnable Color() { }
-    GPUEnable Color(float r_, float g_, float b_, float a_) : r(r_), g(g_), b(b_), a(a_) { }
-    GPUEnable Color(float r_, float g_, float b_) : r(r_), g(g_), b(b_), a(1) { }
-    GPUEnable Color blendTo(Color c) {
-        return Color(
+template<typename FloatT>
+struct Color_ {
+    FloatT r, g, b, a;
+    GPUEnable Color_() { }
+    template<typename T2>
+    GPUEnable Color_(const Color_<T2>& v) : r(v.r), g(v.g), b(v.b), a(v.a) { }
+    GPUEnable Color_(FloatT r_, FloatT g_, FloatT b_, FloatT a_) : r(r_), g(g_), b(b_), a(a_) { }
+    GPUEnable Color_(FloatT r_, FloatT g_, FloatT b_) : r(r_), g(g_), b(b_), a(1) { }
+    GPUEnable Color_ blendTo(Color_ c) {
+        return Color_(
             a * r + (1.0 - a) * c.r,
             a * g + (1.0 - a) * c.g,
             a * b + (1.0 - a) * c.b,
             a * a + (1.0 - a) * c.a
         );
     }
-    GPUEnable Color blendToCorrected(Color c) {
-        Color result(
+    GPUEnable Color_ blendToCorrected(Color_ c) {
+        Color_ result(
             a * r + (1.0 - a) * c.r * c.a,
             a * g + (1.0 - a) * c.g * c.a,
             a * b + (1.0 - a) * c.b * c.a,
@@ -130,12 +143,12 @@ struct Color {
             result.r /= result.a;
             result.g /= result.a;
             result.b /= result.a;
-        } else result = Color(0, 0, 0, 0);
+        } else result = Color_(0, 0, 0, 0);
         return result;
     }
-    GPUEnable Color blendToDifferential(Color c, float ratio) {
-        float dt = pow(1 - a, ratio);
-        return Color(
+    GPUEnable Color_ blendToDifferential(Color_ c, FloatT ratio) {
+        FloatT dt = pow(1 - a, ratio);
+        return Color_(
             (1.0 - dt) * r + dt * c.r,
             (1.0 - dt) * g + dt * c.g,
             (1.0 - dt) * b + dt * c.b,
@@ -143,19 +156,22 @@ struct Color {
         );
     }
 
-    GPUEnable Color& operator += (const Color& v) { r += v.r; g += v.g; b += v.b; a += v.a; return *this; }
-    GPUEnable Color& operator -= (const Color& v) { r -= v.r; g -= v.g; b -= v.b; a -= v.a; return *this; }
-    GPUEnable Color& operator *= (const Color& v) { r *= v.r; g *= v.g; b *= v.b; a *= v.a; return *this; }
-    GPUEnable Color& operator /= (const Color& v) { r /= v.r; g /= v.g; b /= v.b; a /= v.a; return *this; }
-    GPUEnable Color& operator *= (float s) { r *= s; g *= s; b *= s; a *= s; return *this; }
-    GPUEnable Color& operator /= (float s) { r /= s; g /= s; b /= s; a /= s; return *this; }
-    GPUEnable Color operator + (const Color& v) const { return Color(r + v.r, g + v.g, b + v.b, a + v.a); }
-    GPUEnable Color operator - (const Color& v) const { return Color(r - v.r, g - v.g, b - v.b, a - v.a); }
-    GPUEnable Color operator * (const Color& v) const { return Color(r * v.r, g * v.g, b * v.b, a * v.a); }
-    GPUEnable Color operator / (const Color& v) const { return Color(r / v.r, g / v.g, b / v.b, a / v.a); }
-    GPUEnable Color operator * (float v) const { return Color(r * v, g * v, b * v, a * v); }
-    GPUEnable Color operator / (float v) const { return Color(r / v, g / v, b / v, a / v); }
+    GPUEnable Color_& operator += (const Color_& v) { r += v.r; g += v.g; b += v.b; a += v.a; return *this; }
+    GPUEnable Color_& operator -= (const Color_& v) { r -= v.r; g -= v.g; b -= v.b; a -= v.a; return *this; }
+    GPUEnable Color_& operator *= (const Color_& v) { r *= v.r; g *= v.g; b *= v.b; a *= v.a; return *this; }
+    GPUEnable Color_& operator /= (const Color_& v) { r /= v.r; g /= v.g; b /= v.b; a /= v.a; return *this; }
+    GPUEnable Color_& operator *= (FloatT s) { r *= s; g *= s; b *= s; a *= s; return *this; }
+    GPUEnable Color_& operator /= (FloatT s) { r /= s; g /= s; b /= s; a /= s; return *this; }
+    GPUEnable Color_ operator + (const Color_& v) const { return Color_(r + v.r, g + v.g, b + v.b, a + v.a); }
+    GPUEnable Color_ operator - (const Color_& v) const { return Color_(r - v.r, g - v.g, b - v.b, a - v.a); }
+    GPUEnable Color_ operator * (const Color_& v) const { return Color_(r * v.r, g * v.g, b * v.b, a * v.a); }
+    GPUEnable Color_ operator / (const Color_& v) const { return Color_(r / v.r, g / v.g, b / v.b, a / v.a); }
+    GPUEnable Color_ operator * (FloatT v) const { return Color_(r * v, g * v, b * v, a * v); }
+    GPUEnable Color_ operator / (FloatT v) const { return Color_(r / v, g / v, b / v, a / v); }
 };
+
+typedef Color_<float> Color;
+typedef Color_<double> Color_d;
 
 }
 
