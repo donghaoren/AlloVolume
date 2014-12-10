@@ -404,8 +404,16 @@ public:
 
         if(is_stereo) {
             glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_STEREO);
+            stereo_mode = kActiveStereoMode;
         } else {
             glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
+            stereo_mode = kMonoStereoMode;
+            if(config.get<string>("allovolume.stereo", "false") == "anaglyph")
+                stereo_mode = kAnaglyphStereoMode;
+            if(config.get<string>("allovolume.stereo", "false") == "left")
+                stereo_mode = kMonoLeftStereoMode;
+            if(config.get<string>("allovolume.stereo", "false") == "right")
+                stereo_mode = kMonoRightStereoMode;
         }
 
         single_instance = this;
