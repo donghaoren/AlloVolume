@@ -465,12 +465,18 @@ public:
     }
 
     void render_image(GPURenderThread& renderer) {
+        printf("Render image!\n");
         if(!renderer.initialize_complete) return;
 
         int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
         int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
 
+        printf("Render H 1 image!\n");
+
         renderer.uploadImages();
+
+        printf("Render H 2 image!\n");
+
         if(renderer.textures.size() >= render_slave->num_projections) {
             for(int i = 0; i < render_slave->num_projections; i++) {
                 glViewport(render_slave->projections[i].viewport_x * windowWidth, render_slave->projections[i].viewport_y * windowHeight, render_slave->projections[i].viewport_w * windowWidth, render_slave->projections[i].viewport_h * windowHeight);
@@ -483,6 +489,8 @@ public:
                 glEnd();
             }
         }
+
+        printf("Render H 3 image!\n");
     }
 
     void display() {
