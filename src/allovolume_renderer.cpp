@@ -21,6 +21,7 @@
     #include <GLUT/glut.h>
 #else
     #include <GL/glut.h>
+    #include <GL/freeglut_ext.h>
 #endif
 
 using namespace std;
