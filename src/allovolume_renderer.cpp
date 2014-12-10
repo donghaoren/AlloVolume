@@ -10,15 +10,18 @@
 #include <string>
 #include <vector>
 
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-
 #include <zmq.h>
 
 #include "allovolume_protocol.pb.h"
 #include "allovolume_common.h"
 
 #include <cuda_runtime.h>
+
+#ifdef __APPLE__
+    #include <GLUT/glut.h>
+#else
+    #include <GL/glut.h>
+#endif
 
 using namespace std;
 using namespace allovolume;
@@ -256,6 +259,10 @@ public:
     char client_name[256];
 };
 
+class Renderer;
+
+Renderer* single_instance;
+
 class Renderer {
 public:
 
@@ -322,61 +329,49 @@ public:
         }
     }
 
+    static void display_callback() {
+        single_instance->display();
+    }
+
+    static void keyboard_callback(unsigned char key, int x, int y) {
+        if(key == 'q') {
+            exit(0);
+        }
+    }
+
     void initWindow() {
-        if(!glfwInit()) {
-            fprintf(stderr, "Failed to initialize GLFW\n");
-        }
-        //glfwWindowHint(GLFW_SAMPLES, 4); // 4x antialiasing
-        // Open a window and create its OpenGL context
-        int monitor_count = 0;
-        GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
 
-        // Get the size of the virtual screen.
-        int screen_width = 0, screen_height = 0;
-        for(int i = 0; i < monitor_count; i++) {
-            int x, y;
-            const GLFWvidmode *mode = glfwGetVideoMode(monitors[i]);
-            glfwGetMonitorPos(monitors[i], &x, &y);
-            x += mode->width;
-            y += mode->height;
-            screen_width = max(screen_width, x);
-            screen_height = max(screen_height, y);
-        }
-        printf("Screen: %d %d\n", screen_width, screen_height);
+        bool is_stereo = config.get<string>("allovolume.stereo", "false") == "true";
+        bool is_fullscreen = config.get<string>("allovolume.fullscreen", "false") == "true";
 
-        bool fullscreen_mode = config.get<string>("allovolume.fullscreen", "false") == "true";
+        int argc = 0;
+        glutInit(&argc, NULL);
 
-        if(fullscreen_mode) {
-            glfwWindowHint(GLFW_DECORATED, GL_FALSE);
-            glfwWindowHint(GLFW_STEREO, GL_TRUE);
-            window = glfwCreateWindow(screen_width, screen_height, "Allosphere Volume Renderer", NULL, NULL);
-            stereo_mode = kActiveStereoMode;
-            if(!window) {
-                // Unable to create stereo window, fallback to anaglyph.
-                printf("Unable to initialize active stereo, fallback to anaglyph.\n");
-                glfwWindowHint(GLFW_STEREO, GL_FALSE);
-                window = glfwCreateWindow(screen_width, screen_height, "Allosphere Volume Renderer", NULL, NULL);
-                stereo_mode = kAnaglyphStereoMode;
-            }
-            glfwSetWindowPos(window, 0, 0);
+        if(is_stereo) {
+            glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_STEREO);
         } else {
-            glfwWindowHint(GLFW_STEREO, GL_TRUE);
-            window = glfwCreateWindow(960, 640, "Allosphere Volume Renderer", NULL, NULL);
-            stereo_mode = kActiveStereoMode;
-            if(!window) {
-                // Unable to create stereo window, fallback to anaglyph.
-                glfwWindowHint(GLFW_STEREO, GL_FALSE);
-                window = glfwCreateWindow(960, 640, "Allosphere Volume Renderer", NULL, NULL);
-                stereo_mode = kMonoStereoMode;
-            }
+            glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
         }
 
-        if(window == NULL) {
-            fprintf(stderr, "Failed to open GLFW window.\n");
-            glfwTerminate();
-        }
+        single_instance = this;
 
-        glfwMakeContextCurrent(window);
+        if(is_fullscreen) {
+            int width = glutGet(GLUT_SCREEN_WIDTH);
+            int height = glutGet(GLUT_SCREEN_HEIGHT);
+            printf("%d %d\n", width, height);
+            char game_mode_string[64];
+            sprintf(game_mode_string, "%dx%d:24", width, height);
+            glutGameModeString(game_mode_string);
+            glutEnterGameMode();
+            glutDisplayFunc(display_callback);
+            glutKeyboardFunc(keyboard_callback);
+        } else {
+            glutInitWindowSize(config.get<int>("allovolume.window.width", 600),
+                               config.get<int>("allovolume.window.height", 400));
+            glutCreateWindow("Allosphere Volume Renderer");
+            glutDisplayFunc(display_callback);
+            glutKeyboardFunc(keyboard_callback);
+        }
 
         // Get info of GPU and supported OpenGL version
         printf("Renderer: %s\n", glGetString(GL_RENDERER));
@@ -388,29 +383,38 @@ public:
 
         void* socket_pull = zmq_socket(zmq_context, ZMQ_PULL);
         zmq_bind(socket_pull, "inproc://render_slaves_push");
+        zmq_setsockopt_ez(socket_pull, ZMQ_RCVTIMEO, 10); // recv timeout = 10ms.
 
         set<int> barrier_thread;
 
         while(1) {
             zmq_msg_t msg;
             zmq_msg_init(&msg);
-            zmq_msg_recv(&msg, socket_pull, 0);
-            GPURenderThreadEvent event = *(GPURenderThreadEvent*)zmq_msg_data(&msg);
+            int r = zmq_msg_recv(&msg, socket_pull, 0);
+            if(r >= 0) {
+                GPURenderThreadEvent event = *(GPURenderThreadEvent*)zmq_msg_data(&msg);
+
+                barrier_thread.insert(event.thread_id);
+                if(barrier_thread.size() == total_threads) {
+                    if(event.type == GPURenderThreadEvent::kPresent) {
+                        glutPostRedisplay();
+                    }
+                    barrier_thread.clear();
+                }
+            }
             zmq_msg_close(&msg);
 
-            barrier_thread.insert(event.thread_id);
-            if(barrier_thread.size() == total_threads) {
-                display();
-                glfwPollEvents();
-                barrier_thread.clear();
-            }
-
+            #ifdef __APPLE__
+                glutCheckLoop();
+            #else
+                glutMainLoopEvent();
+            #endif
         }
     }
 
     void render_image(GPURenderThread& renderer) {
-        GLint windowWidth, windowHeight;
-        glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
+        int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
+        int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
 
         renderer.uploadImages();
         for(int i = 0; i < render_slave->num_projections; i++) {
@@ -474,12 +478,11 @@ public:
 
 
         // Update Screen
-        glfwSwapBuffers(window);
+        glutSwapBuffers();
     }
 
     AllosphereCalibration* calibration;
     GPURenderThread renderer_left, renderer_right;
-    GLFWwindow* window;
     AllosphereCalibration::RenderSlave* render_slave;
     pthread_t thread;
     int total_threads;
