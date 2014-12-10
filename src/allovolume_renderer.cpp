@@ -313,7 +313,7 @@ public:
 
 class Renderer;
 
-volatile Renderer* single_instance = NULL;
+Renderer* single_instance = NULL;
 
 class Renderer {
 public:
