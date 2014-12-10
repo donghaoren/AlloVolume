@@ -112,17 +112,22 @@ public:
     virtual void setVolume(VolumeBlocks* volume) = 0;
     // This should be approximately the size of your volume.
     virtual void setBlendingCoefficient(float value) = 0;
+    virtual float getBlendingCoefficient() = 0;
     // Transfer function.
     virtual void setTransferFunction(TransferFunction* tf) = 0;
     // Set lens.
     virtual void setLens(Lens* lens) = 0;
     // Set pose.
     virtual void setPose(const Pose& pose) = 0;
+    virtual Pose getPose() = 0;
     // Set output image.
     virtual void setImage(Image* image) = 0;
 
     virtual void setBoundingBox(Vector min, Vector max) = 0;
+    virtual void getBoundingBox(Vector& min, Vector& max) = 0;
+
     virtual void setRaycastingMethod(RaycastingMethod method) = 0;
+    virtual RaycastingMethod getRaycastingMethod() = 0;
 
     // Render!
     virtual void render(int x0, int y0, int total_width, int total_height) = 0;

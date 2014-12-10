@@ -474,6 +474,20 @@ public:
         raycasting_method = method;
     }
 
+    virtual float getBlendingCoefficient() {
+        return blend_coefficient;
+    }
+    virtual Pose getPose() {
+        return pose;
+    }
+    virtual void getBoundingBox(Vector& min, Vector& max) {
+        min = bbox_min;
+        max = bbox_max;
+    }
+    virtual RaycastingMethod getRaycastingMethod() {
+        return raycasting_method;
+    }
+
     virtual void render() {
         render(0, 0, image->getWidth(), image->getHeight());
     }

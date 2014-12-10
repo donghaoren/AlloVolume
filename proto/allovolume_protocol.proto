@@ -48,7 +48,6 @@ message HDRenderingTask {
     required LensType lens_type                       = 1;
     required LensParameters lens_parameters           = 2;
 
-    required Pose pose               = 3;
     required int32 total_width       = 4;
     required int32 total_height      = 5;
 

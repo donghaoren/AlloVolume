@@ -444,15 +444,6 @@ int main(int argc, char* argv[]) {
             task.set_lens_type(protocol::HDRenderingTask_LensType_Equirectangular);
             task.set_total_width(3200);
             task.set_total_height(1600);
-            Pose pose;
-            pose.position = Vector(-1e10, 0, 0);
-            task.mutable_pose()->set_x(pose.position.x);
-            task.mutable_pose()->set_y(pose.position.y);
-            task.mutable_pose()->set_z(pose.position.z);
-            task.mutable_pose()->set_qw(pose.rotation.w);
-            task.mutable_pose()->set_qx(pose.rotation.v.x);
-            task.mutable_pose()->set_qy(pose.rotation.v.y);
-            task.mutable_pose()->set_qz(pose.rotation.v.z);
 
             task.mutable_lens_parameters()->set_eye_separation(0);
             task.mutable_lens_parameters()->set_focal_distance(1);

@@ -201,10 +201,8 @@ public:
                             } break;
                         }
                         renderer->setLens(render_lens);
-                        Pose pose;
-                        pose.position = Vector(task.pose().x(), task.pose().y(), task.pose().z());
-                        pose.rotation = Quaternion(task.pose().qw(), task.pose().qx(), task.pose().qy(), task.pose().qz());
-                        renderer->setPose(pose);
+                        VolumeRenderer::RaycastingMethod raycasting_method = renderer->getRaycastingMethod();
+                        renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
                         renderer->setTransferFunction(tf.get());
                         Image* img = Image::Create(task.task_vp_w(), task.task_vp_h());
                         renderer->setImage(img);
@@ -228,7 +226,7 @@ public:
 
                         zmq_protobuf_send(feedback, socket_feedback);
 
-                        renderer->setPose(current_pose);
+                        renderer->setRaycastingMethod(raycasting_method);
                     }
                 } break;
             }
