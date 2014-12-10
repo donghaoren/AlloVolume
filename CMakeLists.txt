@@ -21,6 +21,7 @@ FIND_PACKAGE ( CUDA REQUIRED )
 FIND_PACKAGE ( HDF5 REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( FreeImage REQUIRED )
+FIND_PACKAGE ( GLUT REQUIRED )
 #FIND_PACKAGE ( Protobuf REQUIRED )
 
 SET ( CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 )
@@ -31,6 +32,7 @@ LINK_DIRECTORIES (
   ${YAMLCPP_LIBRARY_DIRS}
   ${GLFW_LIBRARY_DIRS}
   ${Protobuf_LIBRARY_DIRS}
+  ${GLUT_LIBRARY_DIRS}
 )
 
 INCLUDE_DIRECTORIES (
@@ -39,6 +41,7 @@ INCLUDE_DIRECTORIES (
   ${GLFW_INCLUDE_DIRS}
   ${YAMLCPP_INCLUDE_DIRS}
   ${FREEIMAGE_INCLUDE_PATH}
+  ${GLUT_INCLUDE_DIRS}
 )
 
 ADD_LIBRARY (
@@ -91,6 +94,11 @@ ADD_EXECUTABLE (
     src/test_glfw.cpp
 )
 
+ADD_EXECUTABLE (
+  test_glut
+    src/test_glut.cpp
+)
+
 ADD_EXECUTABLE ( dataset_converter
     src/dataset_converter.cpp
 )
@@ -137,6 +145,12 @@ TARGET_LINK_LIBRARIES (
 TARGET_LINK_LIBRARIES (
   test_glfw
     ${GLFW_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+)
+
+TARGET_LINK_LIBRARIES (
+  test_glut
+    ${GLUT_LIBRARIES}
     ${OPENGL_LIBRARIES}
 )
 
