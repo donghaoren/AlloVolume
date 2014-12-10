@@ -111,6 +111,7 @@ public:
         set<string> hd_rendering_tasks_waiting;
         Color* hd_rendering_pixels;
         int hd_rendering_width, hd_rendering_height;
+        string hd_rendering_output_filename;
 
         while(1) {
             zmq_pollitem_t items[2];
@@ -160,7 +161,6 @@ public:
 
                         printf("HDRenderingResponse: %s\n", resp.task_id().c_str());
 
-
                         Color* task_pixels = (Color*)&resp.pixel_data()[0];
                         int vp_x = resp.task_vp_x();
                         int vp_y = resp.task_vp_y();
@@ -178,7 +178,7 @@ public:
 
                         if(hd_rendering_tasks_waiting.empty()) {
                             printf("Saving image...\n");
-                            Image::WriteImageFile("hd.png", "png16", hd_rendering_width, hd_rendering_height, hd_rendering_pixels);
+                            Image::WriteImageFile(hd_rendering_output_filename.c_str(), "png16", hd_rendering_width, hd_rendering_height, hd_rendering_pixels);
                             delete [] hd_rendering_pixels;
                             printf("Success!\n");
                         }
@@ -190,6 +190,9 @@ public:
                 // We got a message from socket_commands.
                 protocol::ControllerRequest request;
                 zmq_protobuf_recv(request, socket_commands);
+
+                // Shall we send a success to the client?
+                bool send_success = true;
 
                 printf("%s\n", protocol::ControllerRequest_Type_Name(request.type()).c_str());
 
@@ -337,13 +340,16 @@ public:
                         hd_rendering_width = total_width;
                         hd_rendering_height = total_height;
                         hd_rendering_pixels = new Color[total_width * total_height];
+                        hd_rendering_output_filename = task.output_filename();
 
                     } break;
                 }
 
-                protocol::ControllerResponse response;
-                response.set_status("success");
-                zmq_protobuf_send(response, socket_commands);
+                if(send_success) {
+                    protocol::ControllerResponse response;
+                    response.set_status("success");
+                    zmq_protobuf_send(response, socket_commands);
+                }
             }
         }
     }
@@ -443,6 +449,23 @@ int main(int argc, char* argv[]) {
 
             task.set_lens_type(protocol::HDRenderingTask_LensType_Equirectangular);
             task.set_total_width(4000);
+            task.set_total_height(2000);
+
+            task.mutable_lens_parameters()->set_eye_separation(0);
+            task.mutable_lens_parameters()->set_focal_distance(1);
+
+            zmq_protobuf_send(req, socket_cmdline);
+
+        } else
+        if(args[0] == "hdrendering-perspective") {
+            protocol::ControllerRequest req;
+            req.set_type(protocol::ControllerRequest_Type_HDRendering);
+
+            protocol::HDRenderingTask& task = *req.mutable_hd_rendering_task();
+
+            task.set_lens_type(protocol::HDRenderingTask_LensType_Perspective);
+            task.set_perspective_fovx(PI / 2.0);
+            task.set_total_width(3000);
             task.set_total_height(2000);
 
             task.mutable_lens_parameters()->set_eye_separation(0);
