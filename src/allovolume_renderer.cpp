@@ -471,15 +471,17 @@ public:
         int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
 
         renderer.uploadImages();
-        for(int i = 0; i < render_slave->num_projections; i++) {
-            glViewport(render_slave->projections[i].viewport_x * windowWidth, render_slave->projections[i].viewport_y * windowHeight, render_slave->projections[i].viewport_w * windowWidth, render_slave->projections[i].viewport_h * windowHeight);
-            glBindTexture(GL_TEXTURE_2D, renderer.textures[i]);
-            glBegin(GL_QUADS);
-            glTexCoord2f(0, 0); glVertex2f(-1, -1);
-            glTexCoord2f(0, 1); glVertex2f(-1, +1);
-            glTexCoord2f(1, 1); glVertex2f(+1, +1);
-            glTexCoord2f(1, 0); glVertex2f(+1, -1);
-            glEnd();
+        if(renderer.textures.size() >= render_slave->num_projections) {
+            for(int i = 0; i < render_slave->num_projections; i++) {
+                glViewport(render_slave->projections[i].viewport_x * windowWidth, render_slave->projections[i].viewport_y * windowHeight, render_slave->projections[i].viewport_w * windowWidth, render_slave->projections[i].viewport_h * windowHeight);
+                glBindTexture(GL_TEXTURE_2D, renderer.textures[i]);
+                glBegin(GL_QUADS);
+                glTexCoord2f(0, 0); glVertex2f(-1, -1);
+                glTexCoord2f(0, 1); glVertex2f(-1, +1);
+                glTexCoord2f(1, 1); glVertex2f(+1, +1);
+                glTexCoord2f(1, 0); glVertex2f(+1, -1);
+                glEnd();
+            }
         }
     }
 
