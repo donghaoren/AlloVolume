@@ -21,7 +21,7 @@ void keyboard_callback(unsigned char key, int x, int y) {
 int main(int argc, char* argv[]) {
     glutInit(&argc, argv);
 
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_STEREO);
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
 
     bool game_mode = (argc == 1);
 
