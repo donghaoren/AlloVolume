@@ -38,7 +38,7 @@ namespace allovolume {
                     scanline[x].r = clamp_pixel_16(pixel.r);
                     scanline[x].g = clamp_pixel_16(pixel.g);
                     scanline[x].b = clamp_pixel_16(pixel.b);
-                    scanline[x].a = clamp_pixel_16(1);
+                    scanline[x].a = clamp_pixel_16(pixel.a);
                 }
             }
             FreeImage_Save(FIF_PNG, bitmap, path);
@@ -52,7 +52,7 @@ namespace allovolume {
                     scanline[x].r = clamp_pixel_8(pixel.r);
                     scanline[x].g = clamp_pixel_8(pixel.g);
                     scanline[x].b = clamp_pixel_8(pixel.b);
-                    scanline[x].a = clamp_pixel_8(1);
+                    scanline[x].a = clamp_pixel_8(pixel.a);
                 }
             }
             FreeImage_Save(FIF_PNG, bitmap, path);

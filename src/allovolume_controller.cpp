@@ -177,9 +177,10 @@ public:
                         hd_rendering_tasks_waiting.erase(resp.task_id());
 
                         if(hd_rendering_tasks_waiting.empty()) {
-                            printf("Success!\n");
+                            printf("Saving image...\n");
                             Image::WriteImageFile("hd.png", "png16", hd_rendering_width, hd_rendering_height, hd_rendering_pixels);
                             delete [] hd_rendering_pixels;
+                            printf("Success!\n");
                         }
 
                     } break;
