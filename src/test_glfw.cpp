@@ -34,6 +34,7 @@ int main() {
     printf("Screen: %d %d\n", screen_width, screen_height);
 
     glfwWindowHint(GLFW_STEREO, GL_TRUE);
+    glfwWindowHint(GLFW_STENCIL_BITS, 0);
     GLFWwindow* window = glfwCreateWindow(800, 600, "Allosphere Volume Renderer", NULL, NULL);
     if(window) {
         printf("Successful!\n");
