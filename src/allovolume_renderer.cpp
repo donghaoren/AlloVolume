@@ -421,7 +421,6 @@ public:
         if(is_fullscreen) {
             int width = glutGet(GLUT_SCREEN_WIDTH);
             int height = glutGet(GLUT_SCREEN_HEIGHT);
-            printf("%d %d\n", width, height);
             char game_mode_string[64];
             sprintf(game_mode_string, "%dx%d:24", width, height);
             glutGameModeString(game_mode_string);

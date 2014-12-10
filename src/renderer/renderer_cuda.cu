@@ -526,10 +526,10 @@ public:
         pms.pose = pose;
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
-        if(raycasting_method == kAdaptiveRKVMethod) {
+        if(raycasting_method == kRK4Method) {
             ray_marching_kernel_rk4<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getWidth(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         }
-        if(raycasting_method == kRK4Method) {
+        if(raycasting_method == kAdaptiveRKVMethod) {
             ray_marching_kernel_rkv_double<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getWidth(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         }
         cudaThreadSynchronize();
