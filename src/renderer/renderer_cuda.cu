@@ -390,7 +390,7 @@ void ray_marching_kernel_rkv_double(ray_marching_parameters_t p) {
             render_dxdt_t dxdt(block_access, p.tf, pos, d, kin, kout, L);
             color_norm_t color_norm;
             Color_d new_color;
-            RungeKuttaVerner(0.0, distance, color, dxdt, color_norm, 1e-5, voxel_size / 16.0, voxel_size / 2.0, new_color);
+            RungeKuttaVerner(0.0, distance, color, dxdt, color_norm, 1e-4, voxel_size / 32.0, voxel_size / 2.0, new_color);
             color = new_color;
             kmax = kin;
         }
