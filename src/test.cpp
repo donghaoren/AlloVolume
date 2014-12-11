@@ -512,7 +512,7 @@ void super3d_closeup_cell_boundary() {
 
 void super3d_render_volume(int index_min, int index_max) {
     TransferFunction* tf_close = TransferFunction::CreateGaussianTicks(1e4, 1e8, TransferFunction::kLogScale, 16);
-    TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-2, 1e8, TransferFunction::kLogScale, 16);
+    TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16);
     //Lens* lens = Lens::CreateEquirectangular();
     Lens* lens = Lens::CreatePerspective(PI / 2.0);
 
@@ -526,7 +526,7 @@ void super3d_render_volume(int index_min, int index_max) {
     //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
     renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
-    int width = 1280, height = 720;
+    int width = 1920, height = 1080;
 
     Image* img_render = Image::Create(width, height);
 
