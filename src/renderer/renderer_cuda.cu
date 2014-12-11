@@ -57,7 +57,6 @@ struct transfer_function_t {
 struct ray_marching_parameters_t {
     const Lens::Ray* rays;
     Color* pixels;
-    transfer_function_t tf;
 
     Color bg_color;
 
@@ -105,6 +104,9 @@ inline int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector b
     *tfar = tmax;
     return tmax > tmin;
 }
+
+texture<float, 3, cudaReadModeElementType> volume_texture;
+texture<float4, 1, cudaReadModeElementType> tf_texture;
 
 struct block_interpolate_t {
     const float* data;
@@ -161,30 +163,6 @@ struct ray_marching_kernel_blockinfo_t {
     int index;
 };
 
-struct render_dxdt_t {
-    block_interpolate_t& block;
-    transfer_function_t& tf;
-    Vector_d pos, d;
-    double kin, kout;
-    double L;
-    __device__ render_dxdt_t(block_interpolate_t& block_, transfer_function_t& tf_, Vector_d pos_, Vector_d d_, double kin_, double kout_, double L_)
-    : block(block_), tf(tf_), pos(pos_), d(d_), kin(kin_), kout(kout_), L(L_) { }
-
-    __device__ void operator() (double x, Color_d y, Color_d& dy) {
-        // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
-        Color_d c = tf.get(block.interpolate(pos + d * (kout - x)));
-        double s = log(1.0 - c.a) / L;
-        c.a = 1.0;
-        dy = (y - c) * s;
-    }
-};
-
-struct color_norm_t {
-    __device__ inline double operator() (Color_d c) {
-        return fmax(fmax(fabs(c.r), fabs(c.g)), fmax(fabs(c.b), fabs(c.a)));
-    }
-};
-
 __global__
 void preprocess_data_kernel(float* data, float* data_processed, size_t data_size, TransferFunction::Scale scale, float min, float max) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -199,6 +177,12 @@ void preprocess_data_kernel(float* data, float* data_processed, size_t data_size
     value = (value - min) / (max - min);
 
     data_processed[idx] = value;
+}
+
+__device__
+inline Color tf_tex_get(float pos) {
+    float4 f4 = tex1D(tf_texture, pos);
+    return Color(f4.x, f4.y, f4.z, f4.w);
 }
 
 __global__
@@ -283,7 +267,7 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
 
             // Blending with basic alpha compositing.
             for(int i = steps - 1; i >= 0; i--) {
-                Color cm = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
+                Color cm = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
                 float k = pow(1.0f - cm.a, step_size / L);
                 color = Color(
                     cm.r * (1.0f - k) + color.r * k,
@@ -388,14 +372,14 @@ void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
             block_interpolate_t block_access(block, p.data + block.offset);
 
             // Blending with RK4.
-            Color c0 = p.tf.get(block_access.interpolate(pos + d * kout));
+            Color c0 = tf_tex_get(block_access.interpolate(pos + d * kout));
             float c0s = log(1.0f - c0.a) / L;
             c0.a = 1.0f;
             for(int i = steps - 1; i >= 0; i--) {
-                Color cm = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
+                Color cm = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
                 float cms = log(1.0f - cm.a) / L;
                 cm.a = 1.0f;
-                Color c1 = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * i)));
+                Color c1 = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * i)));
                 float c1s = log(1.0f - c1.a) / L;
                 c1.a = 1.0f;
                 // Runge Kutta Order 4 method.
@@ -425,6 +409,29 @@ void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
     // Color output.
     p.pixels[idx] = color;
 }
+
+struct render_dxdt_t {
+    block_interpolate_t& block;
+    Vector_d pos, d;
+    double kin, kout;
+    double L;
+    __device__ render_dxdt_t(block_interpolate_t& block_, Vector_d pos_, Vector_d d_, double kin_, double kout_, double L_)
+    : block(block_), pos(pos_), d(d_), kin(kin_), kout(kout_), L(L_) { }
+
+    __device__ void operator() (double x, Color_d y, Color_d& dy) {
+        // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
+        Color_d c = tf_tex_get(block.interpolate(pos + d * (kout - x)));
+        double s = log(1.0 - c.a) / L;
+        c.a = 1.0;
+        dy = (y - c) * s;
+    }
+};
+
+struct color_norm_t {
+    __device__ inline double operator() (Color_d c) {
+        return fmax(fmax(fabs(c.r), fabs(c.g)), fmax(fabs(c.b), fabs(c.a)));
+    }
+};
 
 __global__
 void ray_marching_kernel_rkv_double(ray_marching_parameters_t p) {
@@ -500,7 +507,7 @@ void ray_marching_kernel_rkv_double(ray_marching_parameters_t p) {
             double distance = kout - kin;
             double voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
             block_interpolate_t block_access(block, p.data + block.offset);
-            render_dxdt_t dxdt(block_access, p.tf, pos, d, kin, kout, L);
+            render_dxdt_t dxdt(block_access, pos, d, kin, kout, L);
             color_norm_t color_norm;
             Color_d new_color;
             RungeKuttaVerner(0.0, distance, color, dxdt, color_norm, 1e-5, voxel_size / 16.0, voxel_size, new_color);
@@ -532,7 +539,11 @@ public:
         raycasting_method(kRK4Method),
         bbox_min(-1e20, -1e20, -1e20),
         bbox_max(1e20, 1e20, 1e20),
-        bg_color(0, 0, 0, 0) { }
+        bg_color(0, 0, 0, 0),
+        tf_texture_data(NULL)
+    {
+        floatChannelDesc = cudaCreateChannelDesc<float>();
+    }
 
     struct BlockCompare {
         BlockCompare(Vector center_) {
@@ -575,7 +586,6 @@ public:
         }
         // Preprocess the volume.
         preprocess_data_kernel<<<diviur(data.size, 64), 64>>>(data.gpu, data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
-
     }
 
     virtual void setTransferFunction(TransferFunction* tf_) {
@@ -646,6 +656,8 @@ public:
 
         // Proprocess the scale of the transfer function.
         preprocessVolume();
+        // Upload the transfer function.
+        uploadTransferFunctionTexture();
 
         // Render kernel parameters.
         ray_marching_parameters_t pms;
@@ -662,10 +674,6 @@ public:
         pms.bbox_max = bbox_max;
         pms.raycasting_method = raycasting_method;
 
-        // Set transfer function.
-        pms.tf.data = tf->getContentGPU();
-        pms.tf.size = tf->getSize();
-
         // Other parameters.
         pms.blend_coefficient = blend_coefficient;
         pms.bg_color = bg_color;
@@ -673,6 +681,7 @@ public:
         pms.pose = pose;
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
+        bindTransferFunctionTexture();
         if(raycasting_method == kBasicBlendingMethod) {
             ray_marching_kernel_basic<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         }
@@ -682,6 +691,7 @@ public:
         if(raycasting_method == kAdaptiveRKVMethod) {
             ray_marching_kernel_rkv_double<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         }
+        unbindTransferFunctionTexture();
         cudaThreadSynchronize();
     }
 
@@ -697,6 +707,39 @@ public:
     RaycastingMethod raycasting_method;
     Vector bbox_min, bbox_max;
     Color bg_color;
+
+    cudaChannelFormatDesc floatChannelDesc;
+
+    void uploadTransferFunctionTexture() {
+        if(tf_texture_data) {
+            cudaFreeArray(tf_texture_data);
+            tf_texture_data = NULL;
+        }
+        cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
+        cudaMallocArray(&tf_texture_data, &channel_desc, tf->getSize());
+        cudaMemcpyToArray(tf_texture_data, 0, 0,
+            tf->getContentGPU(),
+            sizeof(float4) * tf->getSize(),
+            cudaMemcpyDeviceToDevice);
+        tf_texture.normalized = 1;
+        tf_texture.filterMode = cudaFilterModeLinear;
+        tf_texture.addressMode[0] = cudaAddressModeClamp;
+        tf_texture.addressMode[1] = cudaAddressModeClamp;
+    }
+    void bindTransferFunctionTexture() {
+        cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
+        cudaBindTextureToArray(tf_texture, tf_texture_data, channel_desc);
+    }
+    void unbindTransferFunctionTexture() {
+        cudaUnbindTexture(tf_texture);
+    }
+    cudaArray* tf_texture_data;
+
+    // cudaArray* volume_array;
+    // void allocateVolumeArray(int block_count, int block_size) {
+    //     cudaExtent extent = make_cudaExtent(8 * block_size, 8 * block_size, diviur(block_count, 64) * block_size);
+    //     cudaMalloc3DArray(&volume_array, &floatChannelDesc, extent, cudaArrayDefault);
+    // }
 };
 
 VolumeRenderer* VolumeRenderer::CreateGPU() {
