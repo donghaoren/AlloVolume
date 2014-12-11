@@ -526,7 +526,8 @@ struct rgb_curve_t {
     }
 };
 
-void blocked_rendering(VolumeRenderer* renderer, int width, int height, const char* output) {
+template <typename CurveT>
+void blocked_rendering(VolumeRenderer* renderer, int width, int height, const char* output, CurveT curve) {
     int bw = 400;
     int bh = 400;
     Color* total_data = new Color[width * height];
@@ -541,7 +542,7 @@ void blocked_rendering(VolumeRenderer* renderer, int width, int height, const ch
             Color* pixels = block_data->getPixels();
             for(int ty = 0; ty < h; ty++) {
                 for(int tx = 0; tx < w; tx++) {
-                    total_data[(ty + y) * width + (tx + x)] = pixels[ty * w + tx];
+                    total_data[(ty + y) * width + (tx + x)] = curve(pixels[ty * w + tx]);
                 }
             }
             delete block_data;
@@ -586,7 +587,7 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setBlendingCoefficient(1e8);
 
             sprintf(output_filename, "super3d/close-front/frame%04d.png", index);
-            blocked_rendering(renderer, width, height, output_filename);
+            blocked_rendering(renderer, width, height, output_filename, curve(0, 1));
         }
         { // Bottom-Top
             Pose pose;
@@ -597,7 +598,7 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setBlendingCoefficient(1e8);
 
             sprintf(output_filename, "super3d/close-bottom/frame%04d.png", index);
-            blocked_rendering(renderer, width, height, output_filename);
+            blocked_rendering(renderer, width, height, output_filename, curve(0, 1));
         }
         { // Front far
             Pose pose;
@@ -608,7 +609,7 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setBlendingCoefficient(1e9);
 
             sprintf(output_filename, "super3d/far-front/frame%04d.png", index);
-            blocked_rendering(renderer, width, height, output_filename);
+            blocked_rendering(renderer, width, height, output_filename, curve(0, 0.5));
         }
         { // Bottom far
             Pose pose;
@@ -618,7 +619,7 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setTransferFunction(tf_far);
 
             sprintf(output_filename, "super3d/far-bottom/frame%04d.png", index);
-            blocked_rendering(renderer, width, height, output_filename);
+            blocked_rendering(renderer, width, height, output_filename, curve(0, 0.5));
         }
         delete volume;
     }
