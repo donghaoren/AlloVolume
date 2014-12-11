@@ -19,13 +19,12 @@ __device__ inline bool RungeKuttaVerner(
     w = x0;
 
     bool continue_evaluation = true;
-    bool is_first = true;
 
     while(continue_evaluation) {
         // First compute k1 ~ k8.
         dxdt(t, w, dx);
         k1 = dx * h;
-        tmp = w + k1 / 6.0f;
+        tmp = w + k1 / 6.0;
         dxdt(t + h / 6, tmp, dx);
         k2 = dx * h;
         tmp = w + k1 * (4.0/75.0) + k2 * (16.0/75.0);

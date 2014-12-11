@@ -630,6 +630,35 @@ void super3d_render_volume(int index_min, int index_max) {
     delete tf_close;
 }
 
+void super3d_performance_test() {
+    VolumeBlocks* volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
+    VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
+    Lens* lens = Lens::CreatePerspective(PI / 2.0);
+    Pose pose;
+    pose.position = Vector(0, 0, -1e10);
+    pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
+    renderer->setPose(pose);
+    TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 32);
+    renderer->setTransferFunction(tf_far);
+
+    Image* img = Image::Create(1024, 1024);
+
+    renderer->setLens(lens);
+    renderer->setVolume(volume);
+    renderer->setImage(img);
+    renderer->setBlendingCoefficient(1e9);
+    renderer->setBackgroundColor(Color(0, 0, 0, 1));
+
+    double t0 = getPreciseTime();
+    renderer->render();
+    double t1 = getPreciseTime();
+    printf("Size: %dx%d\n, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+
+    img->setNeedsDownload();
+    img->save("super3d_performance_test.png", "png16");
+
+}
+
 int main(int argc, char* argv[]) {
     //convert_format();
     //render_one_frame_as_png_super3d(argc, argv, true);
@@ -639,5 +668,5 @@ int main(int argc, char* argv[]) {
     //render_blocks();
 
     //allosphere_calibration_test();
-    super3d_render_volume(1871, 2370);
+    super3d_performance_test();
 }
