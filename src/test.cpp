@@ -630,6 +630,48 @@ void super3d_render_volume(int index_min, int index_max) {
     delete tf_close;
 }
 
+void snshock_performance_test() {
+    VolumeBlocks* volume = VolumeBlocks::LoadFromFile("snshock_3d_hdf5_chk_0248.volume");
+    VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
+    Lens* lens = Lens::CreatePerspective(PI / 2.0);
+    Pose pose;
+    pose.position = Vector(0, 0, -10e19);
+    pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
+    renderer->setPose(pose);
+    TransferFunction* tf_far = TransferFunction::CreateLinearGradient(1e-25, 1e-22, TransferFunction::kLogScale);
+    renderer->setTransferFunction(tf_far);
+
+    Image* img = Image::Create(760, 700);
+
+    renderer->setLens(lens);
+    renderer->setVolume(volume);
+    renderer->setImage(img);
+    renderer->setBlendingCoefficient(5e19);
+    renderer->setBackgroundColor(Color(0, 0, 0, 1));
+
+    printf("RK4:\n");
+    renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+    for(int i = 0; i < 5; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double t1 = getPreciseTime();
+        printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    }
+    img->setNeedsDownload();
+    img->save("snshock_performance_test_rk4.png", "png16");
+
+    printf("Basic:\n");
+    renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
+    for(int i = 0; i < 5; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double t1 = getPreciseTime();
+        printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    }
+    img->setNeedsDownload();
+    img->save("snshock_performance_test_basic.png", "png16");
+}
+
 void super3d_performance_test() {
     VolumeBlocks* volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
     VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
@@ -680,8 +722,6 @@ void super3d_performance_test() {
     //     printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
     // }
 
-
-
 }
 
 int main(int argc, char* argv[]) {
@@ -693,6 +733,7 @@ int main(int argc, char* argv[]) {
     //render_blocks();
 
     //allosphere_calibration_test();
-    super3d_performance_test();
+    //super3d_performance_test();
+    snshock_performance_test();
     //super3d_render_volume(atoi(argv[1]), atoi(argv[1]));
 }
