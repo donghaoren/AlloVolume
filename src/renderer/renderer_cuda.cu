@@ -274,7 +274,7 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
             // Render this block.
             float distance = kout - kin;
             float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            int steps = ceil(distance / voxel_size * 2);
+            int steps = ceil(distance / voxel_size);
             if(steps > block.xsize * 10) steps = block.xsize * 10;
             float step_size = distance / steps;
 
@@ -564,6 +564,20 @@ public:
         }
     }
 
+    void preprocessVolume() {
+        float tf_min, tf_max;
+        tf->getDomain(tf_min, tf_max);
+        TransferFunction::Scale tf_scale = tf->getScale();
+        // For non-linear scales, process the min, max values as well.
+        if(tf_scale == TransferFunction::kLogScale) {
+            tf_min = log(tf_min);
+            tf_max = log(tf_max);
+        }
+        // Preprocess the volume.
+        preprocess_data_kernel<<<diviur(data.size, 64), 64>>>(data.gpu, data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+
+    }
+
     virtual void setTransferFunction(TransferFunction* tf_) {
         tf = tf_;
     }
@@ -630,20 +644,11 @@ public:
         vp.vp_width = image->getWidth(); vp.vp_height = image->getHeight();
         lens->getRaysGPU(vp, rays.gpu);
 
+        // Proprocess the scale of the transfer function.
+        preprocessVolume();
+
         // Render kernel parameters.
         ray_marching_parameters_t pms;
-
-        float tf_min, tf_max;
-        tf->getDomain(tf_min, tf_max);
-        TransferFunction::Scale tf_scale = tf->getScale();
-        // For non-linear scales, process the min, max values as well.
-        if(tf_scale == TransferFunction::kLogScale) {
-            tf_min = log(tf_min);
-            tf_max = log(tf_max);
-        }
-        // Preprocess the volume.
-        preprocess_data_kernel<<<diviur(data.size, 64), 64>>>(data.gpu, data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
-
 
         pms.rays = rays.gpu;
         pms.pixels = image->getPixelsGPU();
