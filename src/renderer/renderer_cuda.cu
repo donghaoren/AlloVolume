@@ -35,8 +35,8 @@ __device__
 inline float clamp01f(float value) { return __saturatef(value); }
 
 __device__
-inline Color tf_interpolate(Color* tf, float tf_min, float tf_max, int tf_size, float t) {
-    float pos = clamp01f((t - tf_min) / (tf_max - tf_min)) * (tf_size - 1.0f);
+inline Color tf_interpolate(Color* tf, int tf_size, float t) {
+    float pos = clamp01f(t) * (tf_size - 1.0f);
     int idx = floor(pos);
     idx = clampi(idx, 0, tf_size - 2);
     float diff = pos - idx;
@@ -48,15 +48,9 @@ inline Color tf_interpolate(Color* tf, float tf_min, float tf_max, int tf_size, 
 struct transfer_function_t {
     Color* data;
     int size;
-    float min, max;
-    TransferFunction::Scale scale;
 
     inline __device__ Color get(float t) {
-        if(scale == TransferFunction::kLogScale) {
-            if(t > 0) t = log(t);
-            else t = min;
-        }
-        return tf_interpolate(data, min, max, size, t);
+        return tf_interpolate(data, size, t);
     }
 };
 
@@ -110,11 +104,6 @@ inline int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector b
     *tnear = tmin;
     *tfar = tmax;
     return tmax > tmin;
-}
-
-__device__
-inline float access_volume(const float* data, int xsize, int ysize, int zsize, int ix, int iy, int iz) {
-    return data[iz * xsize * ysize + iy * xsize + ix];
 }
 
 struct block_interpolate_t {
@@ -197,6 +186,22 @@ struct color_norm_t {
 };
 
 __global__
+void preprocess_data_kernel(float* data, float* data_processed, size_t data_size, TransferFunction::Scale scale, float min, float max) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx >= data_size) return;
+    float value = data[idx];
+
+    if(scale == TransferFunction::kLogScale) {
+        if(value > 0) value = log(value);
+        else value = min;
+    }
+
+    value = (value - min) / (max - min);
+
+    data_processed[idx] = value;
+}
+
+__global__
 void ray_marching_kernel_basic(ray_marching_parameters_t p) {
     // Pixel index.
     int px = blockIdx.x * blockDim.x + threadIdx.x;
@@ -269,7 +274,7 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
             // Render this block.
             float distance = kout - kin;
             float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            int steps = ceil(distance / voxel_size);
+            int steps = ceil(distance / voxel_size * 2);
             if(steps > block.xsize * 10) steps = block.xsize * 10;
             float step_size = distance / steps;
 
@@ -520,9 +525,8 @@ public:
 
     VolumeRendererImpl() :
         blocks(512),
-        volume_blocks(512),
-        data(512 * 32 * 32 * 32),
-        volume_data(512 * 34 * 34 * 34),
+        data(512 * 34 * 34 * 34),
+        data_processed(512 * 34 * 34 * 34),
         rays(1000 * 1000),
         blend_coefficient(1.0),
         raycasting_method(kRK4Method),
@@ -552,6 +556,7 @@ public:
         // Copy volume data.
         block_count = volume->getBlockCount();
         data.allocate(volume->getDataSize());
+        data_processed.allocate(volume->getDataSize());
         data.upload(volume->getData());
         blocks.allocate(block_count);
         for(int i = 0; i < block_count; i++) {
@@ -627,10 +632,23 @@ public:
 
         // Render kernel parameters.
         ray_marching_parameters_t pms;
+
+        float tf_min, tf_max;
+        tf->getDomain(tf_min, tf_max);
+        TransferFunction::Scale tf_scale = tf->getScale();
+        // For non-linear scales, process the min, max values as well.
+        if(tf_scale == TransferFunction::kLogScale) {
+            tf_min = log(tf_min);
+            tf_max = log(tf_max);
+        }
+        // Preprocess the volume.
+        preprocess_data_kernel<<<diviur(data.size, 64), 64>>>(data.gpu, data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+
+
         pms.rays = rays.gpu;
         pms.pixels = image->getPixelsGPU();
         pms.blocks = blocks.gpu;
-        pms.data = data.gpu;
+        pms.data = data_processed.gpu;
         pms.width = image->getWidth();
         pms.height = image->getHeight();
         pms.block_count = block_count;
@@ -641,14 +659,8 @@ public:
 
         // Set transfer function.
         pms.tf.data = tf->getContentGPU();
-        tf->getDomain(pms.tf.min, pms.tf.max);
-        pms.tf.scale = tf->getScale();
         pms.tf.size = tf->getSize();
-        // For non-linear scales, process the min, max values as well.
-        if(pms.tf.scale == TransferFunction::kLogScale) {
-            pms.tf.min = log(pms.tf.min);
-            pms.tf.max = log(pms.tf.max);
-        }
+
         // Other parameters.
         pms.blend_coefficient = blend_coefficient;
         pms.bg_color = bg_color;
@@ -669,7 +681,7 @@ public:
     }
 
     MirroredMemory<BlockDescription> blocks;
-    MirroredMemory<float> volume_data, volume_blocks, data;
+    MirroredMemory<float> data, data_processed;
     MirroredMemory<Lens::Ray> rays;
     int block_count;
     TransferFunction* tf;

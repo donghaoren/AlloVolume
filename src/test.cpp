@@ -638,10 +638,10 @@ void super3d_performance_test() {
     pose.position = Vector(0, 0, -1e10);
     pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
     renderer->setPose(pose);
-    TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 32);
+    TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16);
     renderer->setTransferFunction(tf_far);
 
-    Image* img = Image::Create(1024, 1024);
+    Image* img = Image::Create(760, 700);
 
     renderer->setLens(lens);
     renderer->setVolume(volume);
@@ -657,6 +657,8 @@ void super3d_performance_test() {
         double t1 = getPreciseTime();
         printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
     }
+    img->setNeedsDownload();
+    img->save("super3d_performance_test_rk4.png", "png16");
 
     printf("Basic:\n");
     renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
@@ -666,18 +668,19 @@ void super3d_performance_test() {
         double t1 = getPreciseTime();
         printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
     }
-
-    printf("Adaptive RKV:\n");
-    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
-    for(int i = 0; i < 5; i++) {
-        double t0 = getPreciseTime();
-        renderer->render();
-        double t1 = getPreciseTime();
-        printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
-    }
-
     img->setNeedsDownload();
-    img->save("super3d_performance_test.png", "png16");
+    img->save("super3d_performance_test_basic.png", "png16");
+
+    // printf("Adaptive RKV:\n");
+    // renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    // for(int i = 0; i < 5; i++) {
+    //     double t0 = getPreciseTime();
+    //     renderer->render();
+    //     double t1 = getPreciseTime();
+    //     printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    // }
+
+
 
 }
 
@@ -690,6 +693,6 @@ int main(int argc, char* argv[]) {
     //render_blocks();
 
     //allosphere_calibration_test();
-    //super3d_performance_test();
-    super3d_render_volume(atoi(argv[1]), atoi(argv[1]));
+    super3d_performance_test();
+    //super3d_render_volume(atoi(argv[1]), atoi(argv[1]));
 }
