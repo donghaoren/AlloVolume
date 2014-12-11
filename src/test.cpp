@@ -523,8 +523,8 @@ void super3d_render_volume(int index_min, int index_max) {
     float sz = 2.5e10;
     renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
 
-    //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
-    renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    //renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
     int width = 1920, height = 1080;
 
