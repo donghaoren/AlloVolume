@@ -574,7 +574,7 @@ void super3d_render_volume(int index_min, int index_max) {
 
     for(int index = index_min; index <= index_max; index++) {
         char filename[256], output_filename[256];
-        sprintf(filename, "super3d_hdf5_plt_cnt_%04d.volume", index);
+        sprintf(filename, "/data/donghao/dataset_flash/super3d_hdf5_plt/density/super3d_hdf5_plt_cnt_%04d.volume", index);
         VolumeBlocks* volume = VolumeBlocks::LoadFromFile(filename);
 
         renderer->setVolume(volume);
@@ -639,5 +639,5 @@ int main(int argc, char* argv[]) {
     //render_blocks();
 
     //allosphere_calibration_test();
-    super3d_render_volume(122, 122);
+    super3d_render_volume(1871, 2370);
 }
