@@ -564,7 +564,7 @@ void super3d_render_volume(int index_min, int index_max) {
         }
         { // Front far
             Pose pose;
-            pose.position = Vector(-1e9, 0, 0);
+            pose.position = Vector(-1e10, 0, 0);
             pose.rotation = Quaternion(1, Vector(0, 0, 0));
             renderer->setPose(pose);
             renderer->setTransferFunction(tf_far);
@@ -576,7 +576,7 @@ void super3d_render_volume(int index_min, int index_max) {
         }
         { // Bottom far
             Pose pose;
-            pose.position = Vector(0, 0, -1e9);
+            pose.position = Vector(0, 0, -1e10);
             pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
             renderer->setPose(pose);
             renderer->setTransferFunction(tf_far);
