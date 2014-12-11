@@ -510,6 +510,48 @@ void super3d_closeup_cell_boundary() {
     delete volume;
 }
 
+int min(int a, int b) { return a < b ? a : b; }
+
+struct rgb_curve_t {
+    float vmin;
+    float vmax;
+    rgb_curve_t(float min_, float max_) : vmin(min_), vmax(max_) { }
+    Color operator () (const Color& c) {
+        Color r;
+        r.r = clamp01((c.r - vmin) / (vmax - vmin));
+        r.g = clamp01((c.g - vmin) / (vmax - vmin));
+        r.b = clamp01((c.b - vmin) / (vmax - vmin));
+        r.a = c.a;
+        return r;
+    }
+};
+
+void blocked_rendering(VolumeRenderer* renderer, int width, int height, const char* output) {
+    int bw = 400;
+    int bh = 400;
+    Color* total_data = new Color[width * height];
+    for(int x = 0; x < width; x += bw) {
+        for(int y = 0; y < height; y += bh) {
+            int w = min(bw, width - x);
+            int h = min(bh, height - y);
+            Image* block_data = Image::Create(w, h);
+            renderer->setImage(block_data);
+            renderer->render(x, y, width, height);
+            block_data->setNeedsDownload();
+            Color* pixels = block_data->getPixels();
+            for(int ty = 0; ty < h; ty++) {
+                for(int tx = 0; tx < w; tx++) {
+                    total_data[(ty + y) * width + (tx + x)] = pixels[ty * w + tx];
+                }
+            }
+            delete block_data;
+        }
+    }
+    Image::WriteImageFile(output, "png16", width, height, total_data);
+    printf("Written to: %s\n", output);
+    delete [] total_data;
+}
+
 void super3d_render_volume(int index_min, int index_max) {
     TransferFunction* tf_close = TransferFunction::CreateGaussianTicks(1e4, 1e8, TransferFunction::kLogScale, 16);
     TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16);
@@ -523,14 +565,11 @@ void super3d_render_volume(int index_min, int index_max) {
     float sz = 2.5e10;
     renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
 
-    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
-    //renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+    //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
-    int width = 1920, height = 1080;
-
-    Image* img_render = Image::Create(width, height);
-
-    renderer->setImage(img_render);
+    int width = 1920, height = 1280;
+    renderer->setBackgroundColor(Color(0, 0, 0, 1));
 
     for(int index = index_min; index <= index_max; index++) {
         char filename[256], output_filename[256];
@@ -545,10 +584,9 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setPose(pose);
             renderer->setTransferFunction(tf_close);
             renderer->setBlendingCoefficient(1e8);
-            renderer->render();
-            img_render->setNeedsDownload();
+
             sprintf(output_filename, "super3d/close-front/frame%04d.png", index);
-            img_render->save(output_filename, "png16");
+            blocked_rendering(renderer, width, height, output_filename);
         }
         { // Bottom-Top
             Pose pose;
@@ -557,10 +595,9 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setPose(pose);
             renderer->setTransferFunction(tf_close);
             renderer->setBlendingCoefficient(1e8);
-            renderer->render();
-            img_render->setNeedsDownload();
+
             sprintf(output_filename, "super3d/close-bottom/frame%04d.png", index);
-            img_render->save(output_filename, "png16");
+            blocked_rendering(renderer, width, height, output_filename);
         }
         { // Front far
             Pose pose;
@@ -569,10 +606,9 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setPose(pose);
             renderer->setTransferFunction(tf_far);
             renderer->setBlendingCoefficient(1e9);
-            renderer->render();
-            img_render->setNeedsDownload();
+
             sprintf(output_filename, "super3d/far-front/frame%04d.png", index);
-            img_render->save(output_filename, "png16");
+            blocked_rendering(renderer, width, height, output_filename);
         }
         { // Bottom far
             Pose pose;
@@ -580,16 +616,13 @@ void super3d_render_volume(int index_min, int index_max) {
             pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
             renderer->setPose(pose);
             renderer->setTransferFunction(tf_far);
-            renderer->setBlendingCoefficient(1e9);
-            renderer->render();
-            img_render->setNeedsDownload();
+
             sprintf(output_filename, "super3d/far-bottom/frame%04d.png", index);
-            img_render->save(output_filename, "png16");
+            blocked_rendering(renderer, width, height, output_filename);
         }
         delete volume;
     }
 
-    delete img_render;
     delete renderer;
     delete lens;
     delete tf_far;

@@ -120,6 +120,9 @@ public:
     // Set pose.
     virtual void setPose(const Pose& pose) = 0;
     virtual Pose getPose() = 0;
+    // Background color.
+    virtual void setBackgroundColor(Color color) = 0;
+    virtual Color getBackgroundColor() = 0;
     // Set output image.
     virtual void setImage(Image* image) = 0;
 

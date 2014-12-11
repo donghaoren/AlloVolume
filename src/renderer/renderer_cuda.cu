@@ -65,6 +65,8 @@ struct ray_marching_parameters_t {
     Color* pixels;
     transfer_function_t tf;
 
+    Color bg_color;
+
     const BlockDescription* blocks;
     const float* data;
     int width, height;
@@ -208,7 +210,7 @@ void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
     register Vector d = p.pose.rotation.rotate(ray.direction);
 
     // Initial color (background color).
-    register Color color(0, 0, 0, 0);
+    register Color color = p.bg_color;
 
     // Global ray information.
     float g_kin, g_kout;
@@ -327,7 +329,7 @@ void ray_marching_kernel_rkv_double(ray_marching_parameters_t p) {
     register Vector_d d = p.pose.rotation.rotate(ray.direction);
 
     // Initial color (background color).
-    register Color_d color(0, 0, 0, 0);
+    register Color_d color = p.bg_color;
 
     // Global ray information.
     float g_kin, g_kout;
@@ -419,7 +421,8 @@ public:
         blend_coefficient(1.0),
         raycasting_method(kRK4Method),
         bbox_min(-1e20, -1e20, -1e20),
-        bbox_max(1e20, 1e20, 1e20) { }
+        bbox_max(1e20, 1e20, 1e20),
+        bg_color(0, 0, 0, 0) { }
 
     struct BlockCompare {
         BlockCompare(Vector center_) {
@@ -487,6 +490,12 @@ public:
     virtual RaycastingMethod getRaycastingMethod() {
         return raycasting_method;
     }
+    virtual void setBackgroundColor(Color color) {
+        bg_color = color;
+    }
+    virtual Color getBackgroundColor() {
+        return bg_color;
+    }
 
     virtual void render() {
         render(0, 0, image->getWidth(), image->getHeight());
@@ -536,6 +545,7 @@ public:
         }
         // Other parameters.
         pms.blend_coefficient = blend_coefficient;
+        pms.bg_color = bg_color;
         // Block range.
         pms.pose = pose;
         int blockdim_x = 8; // 8x8 is the optimal block size.
@@ -560,6 +570,7 @@ public:
     float blend_coefficient;
     RaycastingMethod raycasting_method;
     Vector bbox_min, bbox_max;
+    Color bg_color;
 };
 
 VolumeRenderer* VolumeRenderer::CreateGPU() {
