@@ -33,8 +33,9 @@ message LensParameters {
 
 message RendererParameters {
     enum RenderingMethod {
-        RK4                    = 1;
-        AdaptiveRKV            = 2;
+        BasicBlending          = 1;
+        RK4                    = 2;
+        AdaptiveRKV            = 3;
     }
     required RenderingMethod method      = 1;
     required float blending_coefficient  = 2;

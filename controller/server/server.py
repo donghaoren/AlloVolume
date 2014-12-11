@@ -63,6 +63,7 @@ class ControllerServer(ApplicationSession):
             method_map = {
                 'RK4': protocol.RendererParameters.RK4,
                 'AdaptiveRKV': protocol.RendererParameters.AdaptiveRKV
+                'BasicBlending': protocol.RendererParameters.BasicBlending
             }
             msg.renderer_parameters.method = method_map[method]
             server.send(msg.SerializeToString())

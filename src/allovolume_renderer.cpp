@@ -146,6 +146,9 @@ public:
                 case protocol::RendererBroadcast_Type_SetRendererParameters: {
                     renderer->setBlendingCoefficient(msg.renderer_parameters().blending_coefficient());
                     switch(msg.renderer_parameters().method()) {
+                        case protocol::RendererParameters_RenderingMethod_BasicBlending: {
+                            renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
+                        } break;
                         case protocol::RendererParameters_RenderingMethod_RK4: {
                             renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
                         } break;

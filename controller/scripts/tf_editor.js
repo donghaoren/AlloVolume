@@ -178,7 +178,7 @@ TransferFunctionDescription.prototype.generateGaussians = function(tmin, tmax, c
         c.a = this.sampleGradient(t).a;
         this.gaussians.push({
             center: t,
-            sigma: (tmax - tmin) / (count) / 10,
+            sigma: (tmax - tmin) / (count) / 15,
             color: c
         });
     }
