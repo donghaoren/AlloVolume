@@ -690,5 +690,6 @@ int main(int argc, char* argv[]) {
     //render_blocks();
 
     //allosphere_calibration_test();
-    super3d_performance_test();
+    //super3d_performance_test();
+    super3d_render_volume(atoi(argv[1]), atoi(argv[1]));
 }
