@@ -34,7 +34,6 @@ public:
     virtual Scale getScale() = 0;
 
     virtual Color* getContent() = 0;
-    virtual Color* getContentGPU() = 0;
     virtual size_t getSize() = 0;
 
     virtual void setContent(const Color* color, size_t size) = 0;

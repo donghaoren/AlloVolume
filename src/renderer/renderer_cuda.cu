@@ -280,7 +280,7 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
             // Blending with basic alpha compositing.
             for(int i = steps - 1; i >= 0; i--) {
                 Color cm = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
-                float k = pow(1.0f - cm.a, step_size / L);
+                float k = expf(cm.a * step_size / L);
                 color = Color(
                     cm.r * (1.0f - k) + color.r * k,
                     cm.g * (1.0f - k) + color.g * k,
@@ -385,14 +385,14 @@ void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
 
             // Blending with RK4.
             Color c0 = tf_tex_get(block_access.interpolate(pos + d * kout));
-            float c0s = log(1.0f - c0.a) / L;
+            float c0s = c0.a / L;
             c0.a = 1.0f;
             for(int i = steps - 1; i >= 0; i--) {
                 Color cm = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
-                float cms = log(1.0f - cm.a) / L;
+                float cms = cm.a / L;
                 cm.a = 1.0f;
                 Color c1 = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * i)));
-                float c1s = log(1.0f - c1.a) / L;
+                float c1s = c1.a / L;
                 c1.a = 1.0f;
                 // Runge Kutta Order 4 method.
                 // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
@@ -740,10 +740,19 @@ public:
             tf_texture_data_size = tf->getSize();
         }
 
+        Color* tf_color_logalpha = new Color[tf->getSize()];
+        Color* tf_color = tf->getContent();
+        for(int i = 0; i < tf->getSize(); i++) {
+            tf_color_logalpha[i] = tf_color[i];
+            tf_color_logalpha[i].a = log(1.0f - tf_color_logalpha[i].a);
+        }
+
         cudaMemcpyToArray(tf_texture_data, 0, 0,
-            tf->getContentGPU(),
+            tf_color_logalpha,
             sizeof(float4) * tf->getSize(),
-            cudaMemcpyDeviceToDevice);
+            cudaMemcpyHostToDevice);
+
+        delete [] tf_color_logalpha;
 
         tf_texture.normalized = 1;
         tf_texture.filterMode = cudaFilterModeLinear;

@@ -50,7 +50,6 @@ public:
 
     TransferFunctionImpl() {
         content_cpu = NULL;
-        content_gpu = NULL;
         capacity = 0;
 
         domain_min = 0;
@@ -62,7 +61,6 @@ public:
         for(int i = 0; i < size; i++) {
             content_cpu[i] = Color(0, 0, 0, 0);
         }
-        is_dirty = true;
     }
 
     void addGaussianTicks(int ticks) {
@@ -72,7 +70,6 @@ public:
             c.a = t * t;
             blendGaussian(t, 1.0 / ticks / 10.0f, c);
         }
-        is_dirty = true;
     }
 
     void addLinearGradient() {
@@ -82,12 +79,6 @@ public:
             c.a = t;
             content_cpu[i] = c.blendToCorrected(content_cpu[i]);
         }
-        is_dirty = true;
-    }
-
-    void upload() {
-        cudaUpload<Color>(content_gpu, content_cpu, size);
-        is_dirty = false;
     }
 
     void blendGaussian(float center, float sigma, Color value) {
@@ -97,23 +88,16 @@ public:
             Color v = Color(value.r, value.g, value.b, value.a * gauss);
             content_cpu[i] = v.blendToCorrected(content_cpu[i]);
         }
-        is_dirty = true;
     }
 
     virtual Color* getContent() {
         return content_cpu;
     }
 
-    virtual Color* getContentGPU() {
-        if(is_dirty) upload();
-        return content_gpu;
-    }
-
     virtual void setContent(const Color* color, size_t size_) {
         allocate(size_);
         size = size_;
         memcpy(content_cpu, color, sizeof(Color) * size);
-        is_dirty = true;
     }
 
     virtual void getDomain(float& min, float& max) {
@@ -145,9 +129,7 @@ public:
 private:
     void free() {
         if(content_cpu) delete [] content_cpu;
-        if(content_gpu) cudaDeallocate(content_gpu);
         content_cpu = NULL;
-        content_gpu = NULL;
         capacity = 0;
     }
     void allocate(size_t capacity_) {
@@ -155,15 +137,12 @@ private:
         free();
         capacity = capacity_;
         content_cpu = new Color[capacity];
-        content_gpu = cudaAllocate<Color>(capacity);
     }
 
     float domain_min, domain_max;
     Scale scale;
 
-    bool is_dirty;
     Color* content_cpu;
-    Color* content_gpu;
     size_t size, capacity;
 };
 
