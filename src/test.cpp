@@ -635,7 +635,7 @@ void super3d_performance_test() {
     VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
     Lens* lens = Lens::CreatePerspective(PI / 2.0);
     Pose pose;
-    pose.position = Vector(0, 0, -1e10);
+    pose.position = Vector(0, 0, -2e10);
     pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
     renderer->setPose(pose);
     TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16);
