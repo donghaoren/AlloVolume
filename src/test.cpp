@@ -649,7 +649,7 @@ void super3d_performance_test() {
     renderer->setBlendingCoefficient(1e9);
     renderer->setBackgroundColor(Color(0, 0, 0, 1));
 
-    renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
+    renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
     for(int i = 0; i < 5; i++) {
         double t0 = getPreciseTime();
         renderer->render();
