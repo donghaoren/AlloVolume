@@ -70,7 +70,7 @@ public:
             float t = (float)i / ((float)ticks - 1);
             Color c = tf_interpolate_host(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
             c.a = t * t;
-            blendGaussian(t, 1.0 / ticks / 10.0f, c);
+            blendGaussian(t, 1.0 / ticks / 20.0f, c);
         }
         is_dirty = true;
     }
