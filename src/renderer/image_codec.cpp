@@ -42,6 +42,7 @@ namespace allovolume {
                 }
             }
             FreeImage_Save(FIF_PNG, bitmap, path);
+            FreeImage_Unload(bitmap);
         }
         if(strcmp(format, "png") == 0) {
             FIBITMAP* bitmap = FreeImage_AllocateT(FIT_BITMAP, width, height, 32);
@@ -56,6 +57,7 @@ namespace allovolume {
                 }
             }
             FreeImage_Save(FIF_PNG, bitmap, path);
+            FreeImage_Unload(bitmap);
         }
     }
 }
