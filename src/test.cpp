@@ -609,7 +609,7 @@ void super3d_render_volume(int index_min, int index_max) {
             renderer->setBlendingCoefficient(1e9);
 
             sprintf(output_filename, "super3d/far-front/frame%04d.png", index);
-            blocked_rendering(renderer, width, height, output_filename, rgb_curve_t(0, 0.5));
+            blocked_rendering(renderer, width, height, output_filename, rgb_curve_t(0, 0.7));
         }
         { // Bottom far
             Pose pose;
