@@ -461,6 +461,141 @@ void super3d_test() {
     delete volume;
 }
 
+void super3d_closeup_cell_boundary() {
+    VolumeBlocks* volume = VolumeBlocks::LoadFromFile("super3d_hdf5_plt_cnt_0122.volume");
+    TransferFunction* tf = TransferFunction::CreateGaussianTicks(1e4, 1e8, TransferFunction::kLogScale, 16);
+    //Lens* lens = Lens::CreateEquirectangular();
+    Lens* lens = Lens::CreatePerspective(PI / 2.0);
+
+    VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
+
+    renderer->setVolume(volume);
+    renderer->setLens(lens);
+    renderer->setTransferFunction(tf);
+    renderer->setBlendingCoefficient(1e8);
+    float sz = 2.5e10;
+    renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
+    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    //renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+
+    int width = 600, height = 400;
+
+    Image* img_render = Image::Create(width, height);
+
+    renderer->setImage(img_render);
+
+    { // Front
+        Pose pose;
+        pose.position = Vector(-1e9, 0, 0);
+        pose.rotation = Quaternion(1, Vector(0, 0, 0));
+        renderer->setPose(pose);
+        renderer->render();
+        img_render->setNeedsDownload();
+        img_render->save("super3d_closeup_cell_boundary_front.png", "png16");
+    }
+    { // Bottom-Top
+        Pose pose;
+        pose.position = Vector(0, 0, -1e9);
+        pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
+        renderer->setPose(pose);
+        renderer->render();
+        img_render->setNeedsDownload();
+        img_render->save("super3d_closeup_cell_boundary_bottom.png", "png16");
+    }
+
+    delete img_render;
+    delete renderer;
+    delete lens;
+    delete tf;
+    delete volume;
+}
+
+void super3d_render_volume(int index_min, int index_max) {
+    TransferFunction* tf_close = TransferFunction::CreateGaussianTicks(1e4, 1e8, TransferFunction::kLogScale, 16);
+    TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(1e-2, 1e8, TransferFunction::kLogScale, 16);
+    //Lens* lens = Lens::CreateEquirectangular();
+    Lens* lens = Lens::CreatePerspective(PI / 2.0);
+
+    VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
+
+    renderer->setLens(lens);
+
+    float sz = 2.5e10;
+    renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
+
+    //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+
+    int width = 1280, height = 720;
+
+    Image* img_render = Image::Create(width, height);
+
+    renderer->setImage(img_render);
+
+    for(int index = index_min; index <= index_max; index++) {
+        char filename[256], output_filename[256];
+        sprintf(filename, "super3d_hdf5_plt_cnt_%04d.volume", index);
+        VolumeBlocks* volume = VolumeBlocks::LoadFromFile(filename);
+
+        renderer->setVolume(volume);
+        { // Front
+            Pose pose;
+            pose.position = Vector(-1e9, 0, 0);
+            pose.rotation = Quaternion(1, Vector(0, 0, 0));
+            renderer->setPose(pose);
+            renderer->setTransferFunction(tf_close);
+            renderer->setBlendingCoefficient(1e8);
+            renderer->render();
+            img_render->setNeedsDownload();
+            sprintf(output_filename, "super3d/close-front/frame%04d.png", index);
+            img_render->save(output_filename, "png16");
+        }
+        { // Bottom-Top
+            Pose pose;
+            pose.position = Vector(0, 0, -1e9);
+            pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
+            renderer->setPose(pose);
+            renderer->setTransferFunction(tf_close);
+            renderer->setBlendingCoefficient(1e8);
+            renderer->render();
+            img_render->setNeedsDownload();
+            sprintf(output_filename, "super3d/close-bottom/frame%04d.png", index);
+            img_render->save(output_filename, "png16");
+        }
+        { // Front far
+            Pose pose;
+            pose.position = Vector(-1e9, 0, 0);
+            pose.rotation = Quaternion(1, Vector(0, 0, 0));
+            renderer->setPose(pose);
+            renderer->setTransferFunction(tf_far);
+            renderer->setBlendingCoefficient(1e9);
+            renderer->render();
+            img_render->setNeedsDownload();
+            sprintf(output_filename, "super3d/far-front/frame%04d.png", index);
+            img_render->save(output_filename, "png16");
+        }
+        { // Bottom far
+            Pose pose;
+            pose.position = Vector(0, 0, -1e9);
+            pose.rotation = Quaternion::Rotation(Vector(0, 1, 0), -PI / 2);
+            renderer->setPose(pose);
+            renderer->setTransferFunction(tf_far);
+            renderer->setBlendingCoefficient(1e9);
+            renderer->render();
+            img_render->setNeedsDownload();
+            sprintf(output_filename, "super3d/far-bottom/frame%04d.png", index);
+            img_render->save(output_filename, "png16");
+        }
+        delete volume;
+    }
+
+    delete img_render;
+    delete renderer;
+    delete lens;
+    delete tf_far;
+    delete tf_close;
+}
+
 int main(int argc, char* argv[]) {
     //convert_format();
     //render_one_frame_as_png_super3d(argc, argv, true);
@@ -470,5 +605,5 @@ int main(int argc, char* argv[]) {
     //render_blocks();
 
     //allosphere_calibration_test();
-    super3d_test();
+    super3d_render_volume(122, 122);
 }
