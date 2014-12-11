@@ -433,7 +433,7 @@ struct render_dxdt_t {
     __device__ void operator() (double x, Color_d y, Color_d& dy) {
         // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
         Color_d c = tf_tex_get(block.interpolate(pos + d * (kout - x)));
-        double s = log(1.0 - c.a) / L;
+        double s = c.a / L;
         c.a = 1.0;
         dy = (y - c) * s;
     }
