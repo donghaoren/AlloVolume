@@ -197,6 +197,112 @@ struct color_norm_t {
 };
 
 __global__
+void ray_marching_kernel_basic(ray_marching_parameters_t p) {
+    // Pixel index.
+    int px = blockIdx.x * blockDim.x + threadIdx.x;
+    int py = blockIdx.y * blockDim.y + threadIdx.y;
+    if(px >= p.width || py >= p.height) return;
+    register int idx = py * p.width + px;
+
+    // Ray information.
+    Lens::Ray ray = p.rays[idx];
+    register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
+    register Vector d = p.pose.rotation.rotate(ray.direction);
+
+    // Initial color (background color).
+    register Color color = p.bg_color;
+
+    // Global ray information.
+    float g_kin, g_kout;
+    intersectBox(pos, d, p.bbox_min, p.bbox_max, &g_kin, &g_kout);
+    if(g_kout < 0) {
+        p.pixels[idx] = color;
+        return;
+    }
+    if(g_kin < 0) g_kin = 0;
+
+    // Block intersection.
+    ray_marching_kernel_blockinfo_t blockinfos[128];
+    int blockinfos_count = 0;
+
+    for(int block_cursor = 0; block_cursor < p.block_count; block_cursor++) {
+        BlockDescription block = p.blocks[block_cursor];
+        float kin, kout;
+        if(intersectBox(pos, d, block.min, block.max, &kin, &kout)) {
+            if(kin < g_kin) kin = g_kin;
+            if(kin < kout) {
+                blockinfos[blockinfos_count].kin = kin;
+                blockinfos[blockinfos_count].kout = kout;
+                blockinfos[blockinfos_count].index = block_cursor;
+                blockinfos_count += 1;
+            }
+        }
+    }
+
+    // Bubble-sort blocks according to distance.
+    for(;;) {
+        bool swapped = false;
+        int n = blockinfos_count;
+        for(int c = 0; c < n - 1; c++) {
+            if(blockinfos[c].kin < blockinfos[c + 1].kin) {
+                ray_marching_kernel_blockinfo_t tmp = blockinfos[c + 1];
+                blockinfos[c + 1] = blockinfos[c];
+                blockinfos[c] = tmp;
+                swapped = true;
+            }
+        }
+        n -= 1;
+        if(!swapped) break;
+    }
+
+    // Simple solution: fixed step size.
+    float kmax = g_kout;
+    float L = p.blend_coefficient;
+
+    // Render blocks.
+    for(int cursor = 0; cursor < blockinfos_count; cursor++) {
+        BlockDescription block = p.blocks[blockinfos[cursor].index];
+        float kin = blockinfos[cursor].kin;
+        float kout = blockinfos[cursor].kout;
+        if(kout > kmax) kout = kmax;
+        if(kin < kout) {
+            // Render this block.
+            float distance = kout - kin;
+            float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
+            int steps = ceil(distance / voxel_size);
+            if(steps > block.xsize * 10) steps = block.xsize * 10;
+            float step_size = distance / steps;
+
+            // Interpolate context.
+            block_interpolate_t block_access(block, p.data + block.offset);
+
+            // Blending with basic alpha compositing.
+            for(int i = steps - 1; i >= 0; i--) {
+                Color cm = p.tf.get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
+                float k = pow(1.0f - cm.a, step_size / L);
+                color = Color(
+                    cm.r * (1.0f - k) + color.r * k,
+                    cm.g * (1.0f - k) + color.g * k,
+                    cm.b * (1.0f - k) + color.b * k,
+                    (1.0f - k) + color.a * k
+                );
+            }
+            kmax = kin;
+        }
+    }
+
+    // Un-premultiply alpha channel.
+    if(color.a != 0) {
+        color.r /= color.a;
+        color.g /= color.a;
+        color.b /= color.a;
+    } else color = Color(0, 0, 0, 0);
+
+    // Color output.
+    p.pixels[idx] = color;
+}
+
+__global__
 void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
     // Pixel index.
     int px = blockIdx.x * blockDim.x + threadIdx.x;
@@ -550,6 +656,9 @@ public:
         pms.pose = pose;
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
+        if(raycasting_method == kBasicBlendingMethod) {
+            ray_marching_kernel_basic<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+        }
         if(raycasting_method == kRK4Method) {
             ray_marching_kernel_rk4<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         }

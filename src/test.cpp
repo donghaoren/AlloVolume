@@ -649,10 +649,13 @@ void super3d_performance_test() {
     renderer->setBlendingCoefficient(1e9);
     renderer->setBackgroundColor(Color(0, 0, 0, 1));
 
-    double t0 = getPreciseTime();
-    renderer->render();
-    double t1 = getPreciseTime();
-    printf("Size: %dx%d\n, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
+    for(int i = 0; i < 5; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double t1 = getPreciseTime();
+        printf("Size: %dx%d\n, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    }
 
     img->setNeedsDownload();
     img->save("super3d_performance_test.png", "png16");
