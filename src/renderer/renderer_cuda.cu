@@ -158,6 +158,18 @@ struct block_interpolate_t {
     }
 };
 
+struct block_interpolate_texture_t {
+    Vector scale, translate;
+
+    __device__
+    inline float interpolate(Vector pos) const {
+        float x = fmaf(pos.x, scale.x, translate.x);
+        float y = fmaf(pos.y, scale.y, translate.y);
+        float z = fmaf(pos.z, scale.z, translate.z);
+        return tex3D(volume_texture, x, y, z);
+    }
+};
+
 struct ray_marching_kernel_blockinfo_t {
     float kin, kout;
     int index;
@@ -539,9 +551,10 @@ public:
         raycasting_method(kRK4Method),
         bbox_min(-1e20, -1e20, -1e20),
         bbox_max(1e20, 1e20, 1e20),
-        bg_color(0, 0, 0, 0),
-        tf_texture_data(NULL)
+        bg_color(0, 0, 0, 0)
     {
+        tf_texture_data = NULL;
+        tf_texture_data_size = 0;
         floatChannelDesc = cudaCreateChannelDesc<float>();
     }
 
@@ -695,32 +708,43 @@ public:
         cudaThreadSynchronize();
     }
 
+    // Memory regions:
     MirroredMemory<BlockDescription> blocks;
     MirroredMemory<float> data, data_processed;
     MirroredMemory<Lens::Ray> rays;
+
     int block_count;
     TransferFunction* tf;
     Lens* lens;
     Image* image;
-    Pose pose;
+
+    // Rendering parameters:
+    Color bg_color;
     float blend_coefficient;
     RaycastingMethod raycasting_method;
+    // Global bounding box:
     Vector bbox_min, bbox_max;
-    Color bg_color;
+    // Pose:
+    Pose pose;
 
     cudaChannelFormatDesc floatChannelDesc;
 
     void uploadTransferFunctionTexture() {
-        if(tf_texture_data) {
-            cudaFreeArray(tf_texture_data);
-            tf_texture_data = NULL;
-        }
         cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
-        cudaMallocArray(&tf_texture_data, &channel_desc, tf->getSize());
+
+        if(tf_texture_data_size != tf->getSize()) {
+            if(tf_texture_data) {
+                cudaFreeArray(tf_texture_data);
+            }
+            cudaMallocArray(&tf_texture_data, &channel_desc, tf->getSize());
+            tf_texture_data_size = tf->getSize();
+        }
+
         cudaMemcpyToArray(tf_texture_data, 0, 0,
             tf->getContentGPU(),
             sizeof(float4) * tf->getSize(),
             cudaMemcpyDeviceToDevice);
+
         tf_texture.normalized = 1;
         tf_texture.filterMode = cudaFilterModeLinear;
         tf_texture.addressMode[0] = cudaAddressModeClamp;
@@ -734,6 +758,12 @@ public:
         cudaUnbindTexture(tf_texture);
     }
     cudaArray* tf_texture_data;
+    size_t tf_texture_data_size;
+
+    void uploadVolumeTexture() {
+        // Assumption: We have a number of fixed-sized blocks.
+
+    }
 
     // cudaArray* volume_array;
     // void allocateVolumeArray(int block_count, int block_size) {
