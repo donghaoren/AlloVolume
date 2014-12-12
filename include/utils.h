@@ -37,6 +37,7 @@ struct Vector_ {
     double len2_double() const { return (double)x * (double)x + (double)y * (double)y + (double)z * (double)z; }
     GPUEnable FloatT len() const { return std::sqrt(x * x + y * y + z * z); }
     GPUEnable Vector_ normalize() const { return *this / len(); }
+    GPUEnable Vector_ safe_normalize() const { return (*this / (fabs(x) + fabs(y) + fabs(z))).normalize(); }
     GPUEnable bool operator <= (const Vector_& v) const { return x <= v.x && y <= v.y && z <= v.z; }
     GPUEnable bool operator >= (const Vector_& v) const { return x >= v.x && y >= v.y && z >= v.z; }
     GPUEnable Vector_ cross(const Vector_& v) const {

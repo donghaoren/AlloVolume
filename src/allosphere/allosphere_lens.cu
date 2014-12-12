@@ -13,10 +13,10 @@ __global__ void allosphere_lens_get_rays_kernel(Lens::Ray* rays, int width, int 
         float fy = ((float)py + 0.5f) / (float)height;
         float4 pos = tex2D(warp_texture, fx, 1.0f - fy);
         Lens::Ray r;
-        Vector primary_direction = Vector(pos.z, pos.x, pos.y).normalize();
+        Vector primary_direction = Vector(pos.z, pos.x, pos.y).safe_normalize();
         Vector lookat = primary_direction * focal_distance;
         r.origin = Vector(-primary_direction.y, primary_direction.x, 0) * eye_separation / 2.0f;
-        r.direction = (lookat - r.origin).normalize();
+        r.direction = (lookat - r.origin).safe_normalize();
         rays[py * width + px] = r;
     }
 }
