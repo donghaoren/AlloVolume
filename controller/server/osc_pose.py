@@ -27,7 +27,7 @@ while True:
 
     try:
         pos = struct.unpack('>fff', (re.search(r'/as_view_pos\0+,fff\0{4}(.{12})', msg).group(1)))
-        scale = 1e19
+        scale = 1e9
         pos = ( pos[0] * scale, pos[1] *  scale, pos[2] * scale )
         new_pose = ( new_pose[0], pos )
     except: pass
@@ -37,11 +37,11 @@ while True:
         msg = protocol.ControllerRequest()
         msg.type = protocol.ControllerRequest.SetPose
         msg.pose.x = float(pose[1][2])
-        msg.pose.y = float(pose[1][0])
+        msg.pose.y = float(-pose[1][0])
         msg.pose.z = float(pose[1][1])
         msg.pose.qw = float(pose[0][3])
         msg.pose.qx = float(pose[0][2])
-        msg.pose.qy = float(pose[0][0])
+        msg.pose.qy = float(-pose[0][0])
         msg.pose.qz = float(pose[0][1])
         server.send(msg.SerializeToString())
         response = protocol.ControllerResponse()
