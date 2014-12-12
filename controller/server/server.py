@@ -62,7 +62,7 @@ class ControllerServer(ApplicationSession):
             msg.renderer_parameters.blending_coefficient = float(blending_coefficient)
             method_map = {
                 'RK4': protocol.RendererParameters.RK4,
-                'AdaptiveRKV': protocol.RendererParameters.AdaptiveRKV
+                'AdaptiveRKV': protocol.RendererParameters.AdaptiveRKV,
                 'BasicBlending': protocol.RendererParameters.BasicBlending
             }
             msg.renderer_parameters.method = method_map[method]
