@@ -27,7 +27,8 @@ while True:
 
     try:
         pos = struct.unpack('>fff', (re.search(r'/as_view_pos\0+,fff\0{4}(.{12})', msg).group(1)))
-        pos = ( pos[0] * 1e9, pos[1] *  1e9, pos[2] * 1e9 )
+        scale = 1e19
+        pos = ( pos[2] * scale, pos[0] *  scale, pos[1] * scale )
         new_pose = ( new_pose[0], pos )
     except: pass
 
