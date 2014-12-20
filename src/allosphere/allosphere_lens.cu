@@ -42,8 +42,6 @@ __global__ void allosphere_lens_noblend_kernel(Color* data, int width, int heigh
     int px = threadIdx.x + blockDim.x * blockIdx.x;
     int py = threadIdx.y + blockDim.y * blockIdx.y;
     if(px < width && py < height) {
-        float fx = ((float)px + 0.5f) / (float)width;
-        float fy = ((float)py + 0.5f) / (float)height;
         Color r = data[py * width + px];
         r.r *= r.a;
         r.g *= r.a;

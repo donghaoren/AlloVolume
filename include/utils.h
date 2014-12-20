@@ -47,6 +47,8 @@ struct Vector_ {
             x * v.y - y * v.x
         );
     }
+    GPUEnable FloatT& operator [] (int index) { return *((FloatT*)&x + index); }
+    GPUEnable const FloatT& operator [] (int index) const { return *((FloatT*)&x + index); }
 };
 
 typedef Vector_<float> Vector;

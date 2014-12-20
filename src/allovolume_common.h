@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "allovolume_protocol.pb.h"
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 // The renderer has 4 state varaibles:
 //  volume: The volume to be rendered.
@@ -21,7 +23,7 @@
 struct AlloVolumeState {
     allovolume::protocol::TransferFunction transfer_function;
     allovolume::protocol::Pose pose;
-    allovolume::protocol::RGBCurve rgb_curve;
+    allovolume::protocol::RGBLevels rgb_levels;
     allovolume::protocol::LensParameters lens_parameters;
     allovolume::protocol::RendererParameters renderer_parameters;
 };
@@ -39,7 +41,10 @@ int zmq_protobuf_recv(ProtobufT& message, void* socket) {
     zmq_msg_t msg;
     zmq_msg_init(&msg);
     int r = zmq_msg_recv(&msg, socket, 0);
-    message.ParseFromArray(zmq_msg_data(&msg), zmq_msg_size(&msg));
+    google::protobuf::io::ArrayInputStream stream(zmq_msg_data(&msg), zmq_msg_size(&msg));
+    google::protobuf::io::CodedInputStream coded_input(&stream);
+    coded_input.SetTotalBytesLimit(256 * 1048576, 200 * 1048576);
+    message.ParseFromCodedStream(&coded_input);
     zmq_msg_close(&msg);
     return r;
 }

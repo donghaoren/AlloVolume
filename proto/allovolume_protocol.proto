@@ -18,12 +18,14 @@ message TransferFunction {
     required Scale scale       = 1;
     required float domain_min  = 2;
     required float domain_max  = 3;
-    required bytes content     = 4;
+    required int32 size        = 4;
+    required string layers     = 5;
 }
 
-message RGBCurve {
-    required int32 size        = 1;
-    required bytes content     = 2;
+message RGBLevels {
+    required float min  = 1;
+    required float max  = 2;
+    required float pow  = 3;
 }
 
 message LensParameters {
@@ -56,6 +58,7 @@ message HDRenderingTask {
 
     optional float perspective_fovx  = 10;
 
+    optional string identifier       = 50;
     optional string task_id          = 51;
     optional string task_slave       = 52;
     optional int32 task_vp_x         = 53;
@@ -65,12 +68,13 @@ message HDRenderingTask {
 }
 
 message HDRenderingResponse {
-    required string task_id          = 1;
-    optional int32 task_vp_x         = 2;
-    optional int32 task_vp_y         = 3;
-    optional int32 task_vp_w         = 4;
-    optional int32 task_vp_h         = 5;
-    required bytes pixel_data        = 6;
+    required string identifier       = 1;
+    required string task_id          = 2;
+    optional int32 task_vp_x         = 3;
+    optional int32 task_vp_y         = 4;
+    optional int32 task_vp_w         = 5;
+    optional int32 task_vp_h         = 6;
+    required bytes pixel_data        = 7;
 }
 
 message RendererBroadcast {
@@ -85,7 +89,7 @@ message RendererBroadcast {
 
         SetPose                = 20;
         SetTransferFunction    = 21;
-        SetRGBCurve            = 22;
+        SetRGBLevels            = 22;
         SetLensParameters      = 23;
         SetRendererParameters  = 24;
 
@@ -95,7 +99,7 @@ message RendererBroadcast {
     required Type type                               = 1;
 
     optional Pose pose                               = 2;
-    optional RGBCurve rgb_curve                      = 3;
+    optional RGBLevels rgb_levels                    = 3;
 
     optional TransferFunction transfer_function      = 5;
 
@@ -129,25 +133,38 @@ message ControllerRequest {
     enum Type {
         Render                = 1;
         Present               = 2;
+
         LoadVolume            = 10;
         LoadVolumeFromFile    = 11;
+
         SetPose               = 20;
+        GetPose               = 30;
+
         SetTransferFunction   = 21;
-        SetRGBCurve           = 22;
+        GetTransferFunction   = 31;
+
+        SetRGBLevels           = 22;
+        GetRGBLevels           = 32;
+
         SetLensParameters     = 23;
+        GetLensParameters     = 33;
+
         SetRendererParameters = 24;
+        GetRendererParameters = 34;
+
         HDRendering           = 200;
     }
 
     required Type type                                  = 1;
+    optional string sender                              = 2;
 
-    optional TransferFunction transfer_function         = 10;
     optional string volume_filename                     = 11;
 
     optional Pose pose                                  = 20;
-    optional RGBCurve rgb_curve                         = 21;
-    optional LensParameters lens_parameters             = 22;
-    optional RendererParameters renderer_parameters     = 23;
+    optional TransferFunction transfer_function         = 21;
+    optional RGBLevels rgb_levels                       = 22;
+    optional LensParameters lens_parameters             = 23;
+    optional RendererParameters renderer_parameters     = 24;
 
     optional HDRenderingTask hd_rendering_task          = 100;
 }
@@ -156,20 +173,26 @@ message ParameterChangeEvent {
     enum Type {
         SetPose                = 1;
         SetTransferFunction    = 2;
-        SetRGBCurve            = 3;
+        SetRGBLevels            = 3;
         SetLensParameters      = 4;
         SetRendererParameters  = 5;
     }
 
     required Type type         = 1;
+    required string sender     = 2;
 
     optional TransferFunction transfer_function     = 10;
     optional Pose pose                              = 11;
-    optional RGBCurve rgb_curve                     = 12;
+    optional RGBLevels rgb_levels                   = 12;
     optional LensParameters lens_parameters         = 13;
     optional RendererParameters renderer_parameters = 14;
 }
 
 message ControllerResponse {
     required string status = 1;
+    optional Pose pose                                  = 20;
+    optional TransferFunction transfer_function         = 21;
+    optional RGBLevels rgb_levels                       = 22;
+    optional LensParameters lens_parameters             = 23;
+    optional RendererParameters renderer_parameters     = 24;
 }

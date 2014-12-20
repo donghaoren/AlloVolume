@@ -61,14 +61,14 @@ CUDA_ADD_LIBRARY (
     src/renderer/cuda_common.cu
     src/renderer/transfer_function.cpp
     src/renderer/lens.cu
+    src/renderer/image.cu
     src/renderer/image_codec.cpp
-    src/renderer/image.cpp
-
 )
 
 TARGET_LINK_LIBRARIES (
   allovolume_renderer
     ${FREEIMAGE_LIBRARIES}
+    ${YAMLCPP_LIBRARIES}
 )
 
 CUDA_ADD_LIBRARY (

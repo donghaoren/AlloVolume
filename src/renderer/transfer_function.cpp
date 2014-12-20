@@ -6,7 +6,7 @@
 #include <string.h>
 #include <algorithm>
 
-#include "cuda_common.h"
+#include <yaml-cpp/yaml.h>
 
 using namespace std;
 
@@ -67,7 +67,7 @@ public:
         for(float i = 0; i < ticks; i++) {
             float t = (float)i / ((float)ticks - 1);
             Color c = tf_interpolate_host(rainbow_colormap, 0, 1, rainbow_colormap_length, t);
-            c.a = t * t;
+            c.a = t * t * 0.9999;
             blendGaussian(t, 1.0 / ticks / 10.0f, c);
         }
     }
@@ -171,6 +171,98 @@ TransferFunction* TransferFunction::CreateLinearGradient(float min, float max, S
     r->setScale(scale);
     r->addLinearGradient();
     return r;
+}
+
+Color sample_gradient(vector<Color>& colors, float t) {
+    float pos = t * colors.size();
+    int i = floor(pos);
+    if(i < 0) i = 0;
+    if(i >= colors.size() - 1) i = colors.size() - 2;
+    float k = pos - i;
+    return colors[i] * (1.0f - k) + colors[i + 1] * k;
+}
+
+float sigmoid(float t) {
+    return 1.0 / (1.0 + exp(-t));
+}
+
+void TransferFunction::ParseLayers(TransferFunction* target, size_t size, const char* layers) {
+    Color* data = new Color[size];
+    YAML::Node node = YAML::Load(layers);
+
+    for(int i = 0; i < size; i++) {
+        data[i] = Color(0, 0, 0, 0);
+    }
+
+    for(YAML::Node::iterator it = node.begin(); it != node.end(); ++it) {
+        YAML::Node layer = *it;
+        string type = layer["t"].as<string>();
+        if(type == "gaussians") {
+            int ticks = layer["ticks"].as<int>();
+            float t0 = layer["t0"].as<float>();
+            float t1 = layer["t1"].as<float>();
+            float alpha0 = layer["alpha0"].as<float>();
+            float alpha1 = layer["alpha1"].as<float>();
+            float alpha_pow = layer["alpha_pow"].as<float>();
+            float sigma0 = layer["sigma0"].as<float>();
+            float sigma1 = layer["sigma1"].as<float>();
+            vector<Color> gradient;
+            for(YAML::Node::iterator gradient_it = layer["gradient"].begin(); gradient_it != layer["gradient"].end(); ++gradient_it) {
+                gradient.push_back(Color((*gradient_it)[0].as<float>(), (*gradient_it)[1].as<float>(), (*gradient_it)[2].as<float>(), 1.0f));
+            }
+            for(int tick = 0; tick < ticks; ++tick) {
+                float tick_t = (float)tick / (float)(ticks - 1);
+                float t_center = tick_t * (t1 - t0) + t0;
+                float alpha = pow(tick_t, alpha_pow) * (alpha1 - alpha0) + alpha0;
+                float sigma = tick_t * (sigma1 - sigma0) + sigma0;
+                sigma = sigma * (t1 - t0) / ticks;
+                Color c = sample_gradient(gradient, tick_t);
+
+                for(int i = 0; i < size; i++) {
+                    float t = ((float)i + 0.5f) / (float)size;
+                    float gaussian = exp(- (t - t_center) / sigma * (t - t_center) / sigma / 2) * alpha;
+                    c.a = gaussian;
+                    data[i] = c.blendToCorrected(data[i]);
+                }
+            }
+        }
+        if(type == "gradient") {
+            float t0 = layer["t0"].as<float>();
+            float t1 = layer["t1"].as<float>();
+            float alpha0 = layer["alpha0"].as<float>();
+            float alpha1 = layer["alpha1"].as<float>();
+            float alpha_pow = layer["alpha_pow"].as<float>();
+            vector<Color> gradient;
+            for(YAML::Node::iterator gradient_it = layer["gradient"].begin(); gradient_it != layer["gradient"].end(); ++gradient_it) {
+                gradient.push_back(Color((*gradient_it)[0].as<float>(), (*gradient_it)[1].as<float>(), (*gradient_it)[2].as<float>(), 1.0f));
+            }
+            for(int i = 0; i < size; i++) {
+                float t = ((float)i + 0.5f) / (float)size;
+                if(t < t0 || t > t1) continue;
+                float gradient_t = (t - t0) / (t1 - t0);
+                float alpha = pow(gradient_t , alpha_pow) * (alpha1 - alpha0) + alpha0;
+                Color c = sample_gradient(gradient, gradient_t);
+                c.a = alpha;
+                data[i] = c.blendToCorrected(data[i]);
+            }
+        }
+        if(type == "block") {
+            float tm = layer["tm"].as<float>();
+            float span = layer["span"].as<float>();
+            float feather = layer["feather"].as<float>();
+            YAML::Node color = layer["color"];
+            Color c0(color[0].as<float>(), color[1].as<float>(), color[2].as<float>(), color[3].as<float>());
+            for(int i = 0; i < size; i++) {
+                float t = ((float)i + 0.5f) / (float)size;
+                Color c = c0;
+                c.a *= (sigmoid((t - (tm - span)) / feather) + sigmoid((tm + span - t) / feather) - 1.0);
+                data[i] = c.blendToCorrected(data[i]);
+            }
+        }
+    }
+
+    target->setContent(data, size);
+    delete [] data;
 }
 
 }

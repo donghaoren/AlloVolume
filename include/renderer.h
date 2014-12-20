@@ -20,6 +20,8 @@ public:
 
     static Image* Create(int width, int height);
     static bool WriteImageFile(const char* path, const char* format, int width, int height, Color* pixels);
+
+    static void LevelsGPU(Image* img, float min, float max, float pow);
 };
 
 class TransferFunction {
@@ -46,6 +48,8 @@ public:
 
     static TransferFunction* CreateGaussianTicks(float min, float max, Scale scale, int ticks);
     static TransferFunction* CreateLinearGradient(float min, float max, Scale scale);
+
+    static void ParseLayers(TransferFunction* target, size_t size, const char* layers);
 };
 
 class Lens {

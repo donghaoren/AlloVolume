@@ -53,4 +53,22 @@ public:
 
 Image* Image::Create(int width, int height) { return new ImageImpl(width, height); }
 
+__global__
+void kernel_levels(Color* pixels, int width, int height, float levels_min, float levels_max, float levels_pow) {
+    // Pixel index.
+    int px = blockIdx.x * blockDim.x + threadIdx.x;
+    int py = blockIdx.y * blockDim.y + threadIdx.y;
+    if(px >= width || py >= height) return;
+    register int idx = py * width + px;
+    Color c = pixels[idx];
+    c.r = powf(__saturatef((c.r - levels_min) / (levels_max - levels_min)), levels_pow);
+    c.g = powf(__saturatef((c.g - levels_min) / (levels_max - levels_min)), levels_pow);
+    c.b = powf(__saturatef((c.b - levels_min) / (levels_max - levels_min)), levels_pow);
+    pixels[idx] = c;
+}
+
+void Image::LevelsGPU(Image* img, float min, float max, float pow) {
+    kernel_levels<<<dim3(diviur(img->getWidth(), 8), diviur(img->getHeight(), 8), 1), dim3(8, 8, 1)>>>(img->getPixelsGPU(), img->getWidth(), img->getHeight(), min, max, pow);
+}
+
 }

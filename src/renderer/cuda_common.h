@@ -71,7 +71,6 @@ namespace allovolume {
             cudaDeallocate<T>(gpu);
         }
     };
-
 }
 
 #endif
