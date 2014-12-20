@@ -73,7 +73,7 @@ public:
         HDRenderingTask& operator = (const HDRenderingTask&) { }
     };
 
-    map<string, HDRenderingTask> hd_rendering_tasks;
+    map<string, boost::shared_ptr<HDRenderingTask> > hd_rendering_tasks;
     // set<string> hd_rendering_tasks_waiting;
     // Color* hd_rendering_pixels;
     // int hd_rendering_width, hd_rendering_height;
@@ -144,7 +144,7 @@ public:
                 const protocol::HDRenderingResponse& resp = feedback.hd_rendering_response();
 
                 if(hd_rendering_tasks.find(resp.identifier()) != hd_rendering_tasks.end()) {
-                    HDRenderingTask& task = hd_rendering_tasks[resp.identifier()];
+                    HDRenderingTask& task = *hd_rendering_tasks[resp.identifier()].get();
 
                     Color* task_pixels = (Color*)&resp.pixel_data()[0];
                     int vp_x = resp.task_vp_x();
@@ -298,9 +298,11 @@ public:
         static int hd_rendering_index = 0;
 
         hd_rendering_index++;
-        string identifier = to_string(hd_rendering_index);
+        char identifier[64];
+        sprintf(identifier, "task.%d", hd_rendering_index);
 
-        HDRenderingTask& task_struct = hd_rendering_tasks[identifier];
+        hd_rendering_tasks[identifier].reset(new HDRenderingTask());
+        HDRenderingTask& task_struct = *hd_rendering_tasks[identifier].get();
 
         vector<string> slaves(all_clients.begin(), all_clients.end());
         int choice_index = 0;
