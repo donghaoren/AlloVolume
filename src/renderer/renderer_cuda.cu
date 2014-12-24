@@ -8,8 +8,6 @@
 
 #include "rkv.h"
 
-// #define RKV_SOLVER
-
 using namespace std;
 
 namespace allovolume {
@@ -288,14 +286,6 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
     if(px >= p.width || py >= p.height) return;
     register int idx = py * p.width + px;
 
-    // __shared__ BlockDescription shared_blocks[512];
-    // // Copy all blocks into shared_blocks.
-    // for(int i = threadIdx.y * blockDim.x + threadIdx.x; i < p.block_count; i += blockDim.x * blockDim.y) {
-    //     shared_blocks[i] = p.blocks[i];
-    // }
-    // __syncthreads();
-    // p.blocks = shared_blocks;
-
     // Ray information.
     Lens::Ray ray = p.rays[idx];
     register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
@@ -425,8 +415,8 @@ void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
     if(g_kin < 0) g_kin = 0;
 
     // Block intersection.
-    ray_marching_kernel_blockinfo_t blockinfos[512];
-    traverse_stack_t stack[24];
+    ray_marching_kernel_blockinfo_t blockinfos[128];
+    traverse_stack_t stack[64];
     int blockinfos_count = kd_tree_block_intersection(pos, d, g_kin, g_kout, g_kin, g_kout, p.kd_tree, p.kd_tree_root, p.blocks, blockinfos, stack);
 
     // Simple solution: fixed step size.
@@ -491,29 +481,29 @@ void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
 
 struct render_dxdt_t {
     block_interpolate_t& block;
-    Vector_d pos, d;
+    Vector pos, d;
     double kin, kout;
     double L;
-    __device__ render_dxdt_t(block_interpolate_t& block_, Vector_d pos_, Vector_d d_, double kin_, double kout_, double L_)
+    __device__ render_dxdt_t(block_interpolate_t& block_, Vector pos_, Vector d_, double kin_, double kout_, double L_)
     : block(block_), pos(pos_), d(d_), kin(kin_), kout(kout_), L(L_) { }
 
-    __device__ void operator() (double x, Color_d y, Color_d& dy) {
+    __device__ void operator() (double x, Color y, Color& dy) {
         // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
-        Color_d c = tf_tex_get(block.interpolate(pos + d * (kout - x)));
+        Color c = tf_tex_get(block.interpolate(pos + d * (kout - x)));
         double s = c.a / L;
-        c.a = 1.0;
+        c.a = 1.0f;
         dy = (y - c) * s;
     }
 };
 
 struct color_norm_t {
-    __device__ inline double operator() (Color_d c) {
+    __device__ inline double operator() (Color c) {
         return fmax(fmax(fabs(c.r), fabs(c.g)), fmax(fabs(c.b), fabs(c.a)));
     }
 };
 
 __global__
-void ray_marching_kernel_rkv_double(ray_marching_parameters_t p) {
+void ray_marching_kernel_rkf_double(ray_marching_parameters_t p) {
     // Pixel index.
     int px = blockIdx.x * blockDim.x + threadIdx.x;
     int py = blockIdx.y * blockDim.y + threadIdx.y;
@@ -522,11 +512,11 @@ void ray_marching_kernel_rkv_double(ray_marching_parameters_t p) {
 
     // Ray information.
     Lens::Ray ray = p.rays[idx];
-    register Vector_d pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
-    register Vector_d d = p.pose.rotation.rotate(ray.direction);
+    register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
+    register Vector d = p.pose.rotation.rotate(ray.direction);
 
     // Initial color (background color).
-    register Color_d color = p.bg_color;
+    register Color color = p.bg_color;
 
     // Global ray information.
     float g_kin, g_kout;
@@ -538,29 +528,29 @@ void ray_marching_kernel_rkv_double(ray_marching_parameters_t p) {
     if(g_kin < 0) g_kin = 0;
 
     // Block intersection.
-    ray_marching_kernel_blockinfo_t blockinfos[512];
-    traverse_stack_t stack[24];
+    ray_marching_kernel_blockinfo_t blockinfos[128];
+    traverse_stack_t stack[64];
     int blockinfos_count = kd_tree_block_intersection(pos, d, g_kin, g_kout, g_kin, g_kout, p.kd_tree, p.kd_tree_root, p.blocks, blockinfos, stack);
 
     // Simple solution: fixed step size.
-    double kmax = g_kout;
-    double L = p.blend_coefficient;
+    float kmax = g_kout;
+    float L = p.blend_coefficient;
 
     // Render blocks.
     for(int cursor = 0; cursor < blockinfos_count; cursor++) {
         BlockDescription block = p.blocks[blockinfos[cursor].index];
-        double kin = blockinfos[cursor].kin;
-        double kout = blockinfos[cursor].kout;
+        float kin = blockinfos[cursor].kin;
+        float kout = blockinfos[cursor].kout;
         if(kout > kmax) kout = kmax;
         if(kin < kout) {
             // Render this block.
-            double distance = kout - kin;
-            double voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
+            float distance = kout - kin;
+            float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
             block_interpolate_t block_access(block, p.data + block.offset);
             render_dxdt_t dxdt(block_access, pos, d, kin, kout, L);
             color_norm_t color_norm;
-            Color_d new_color;
-            RungeKuttaVerner(0.0, distance, color, dxdt, color_norm, 1e-5, voxel_size / 16.0, voxel_size, new_color);
+            Color new_color;
+            RungeKuttaFehlberg(0.0f, distance, color, dxdt, color_norm, 1e-6f, voxel_size / 64.0f, voxel_size / 2.0f, new_color);
             color = new_color;
             kmax = kin;
         }
@@ -739,8 +729,8 @@ public:
         if(raycasting_method == kRK4Method) {
             ray_marching_kernel_rk4<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         }
-        if(raycasting_method == kAdaptiveRKVMethod) {
-            ray_marching_kernel_rkv_double<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+        if(raycasting_method == kAdaptiveRKFMethod) {
+            ray_marching_kernel_rkf_double<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
         }
         unbindTransferFunctionTexture();
         cudaThreadSynchronize();
@@ -830,6 +820,7 @@ public:
 
         int* blocks_left = new int[block_count];
         int blocks_left_count = 0;
+
         int* blocks_right = new int[block_count];
         int blocks_right_count = 0;
 
@@ -841,12 +832,6 @@ public:
                 blocks_right[blocks_right_count++] = blockids[i];
             }
         }
-        // for(int i = 0; i < blocks_left_count; i++) {
-        //     printf("L: %f\n", split_value - blocks[blocks_left[i]].max[axis]);
-        // }
-        // for(int i = 0; i < blocks_right_count; i++) {
-        //     printf("R: %f\n", blocks[blocks_right[i]].min[axis] - split_value);
-        // }
         int next_axis = (axis + 1) % 3;
         int left = buildKDTreeRecursive(nodes, nodes_count, blocks_left, blocks_left_count, next_axis);
         int right = buildKDTreeRecursive(nodes, nodes_count, blocks_right, blocks_right_count, next_axis);
@@ -864,104 +849,16 @@ public:
     void buildKDTree() {
         kd_tree.allocate(blocks.size * 5);
         kd_tree_size = 0;
+
         int* blockids = new int[blocks.size];
+
         for(int i = 0; i < blocks.size; i++) blockids[i] = i;
         kd_tree_root = buildKDTreeRecursive(kd_tree.cpu, kd_tree_size, blockids, blocks.size, 0);
         kd_tree.size = kd_tree_size;
         kd_tree.upload();
+
+        delete [] blockids;
     }
-
-
-    // void traverseKDTreeNode(Vector pos, Vector direction, int node, float kmin, float kmax) {
-    //     int axis = kd_tree[node].split_axis;
-    //     if(axis < 0) {
-    //         printf("traverseBlock: %d\n", kd_tree[node].left);
-    //         float tkmin, tkmax;
-    //         intersectBox(pos, direction, blocks[kd_tree[node].left].min, blocks[kd_tree[node].left].max, &tkmin, &tkmax);
-    //         printf("  %g %g\n", tkmax, tkmin);
-    //         return;
-    //     }
-    //     float split_value = kd_tree[node].split_value;
-    //     Vector pmin = pos + direction * kmin;
-    //     Vector pmax = pos + direction * kmax;
-    //     if(pmina <= split_value && pmaxa <= split_value) {
-    //         traverseKDTreeNode(pos, direction, kd_tree[node].left, kmin, kmax);
-    //     } else if(pmina >= split_value && pmaxa >= split_value) {
-    //         traverseKDTreeNode(pos, direction, kd_tree[node].right, kmin, kmax);
-    //     } else {
-    //         float k_split = (split_value - pos[axis]) / direction[axis];
-    //         if(pmina < split_value) {
-    //             traverseKDTreeNode(pos, direction, kd_tree[node].right, k_split, kmax);
-    //             traverseKDTreeNode(pos, direction, kd_tree[node].left, kmin, k_split);
-    //         } else {
-    //             traverseKDTreeNode(pos, direction, kd_tree[node].left, k_split, kmax);
-    //             traverseKDTreeNode(pos, direction, kd_tree[node].right, kmin, k_split);
-    //         }
-    //     }
-    // }
-    // void traverseKDTree(Lens::Ray ray) {
-    //     Vector pos = ray.origin;
-    //     Vector direction = ray.direction;
-    //     float kmin, kmax;
-    //     intersectBox(pos, direction, bbox_min, bbox_max, &kmin, &kmax);
-    //     if(kmin < 0) kmin = 0;
-    //     if(kmax < kmin) kmax = kmin;
-    //     printf("Traverse\n");
-    //     //traverseKDTreeNode(pos, direction, kd_tree_root, kmin, kmax);
-    //     traverse_stack_t stack[100];
-    //     int stack_pointer = 0;
-    //     stack[0].node = kd_tree_root;
-    //     stack[0].kmin = kmin;
-    //     stack[0].kmax = kmax;
-    //     stack[0].stage = 0;
-    //     while(stack_pointer >= 0) {
-    //         traverse_stack_t& s = stack[stack_pointer];
-    //         int axis = kd_tree[s.node].split_axis;
-    //         if(axis < 0) {
-    //             printf("traverseBlock: %d\n", kd_tree[s.node].left);
-    //             float tkmin, tkmax;
-    //             intersectBox(pos, direction, blocks[kd_tree[s.node].left].min, blocks[kd_tree[s.node].left].max, &tkmin, &tkmax);
-    //             printf("  %g %g\n", tkmax, tkmin);
-    //             stack_pointer -= 1;
-    //         } else {
-    //             float split_value = kd_tree[s.node].split_value;
-    //             Vector pmin = pos + direction * s.kmin;
-    //             Vector pmax = pos + direction * s.kmax;
-    //             if(pmin[axis] <= split_value && pmaxa <= split_value) {
-    //                 stack[stack_pointer].node = kd_tree[s.node].left;
-    //                 stack[stack_pointer].kmin = s.kmin;
-    //                 stack[stack_pointer].kmax = s.kmax;
-    //                 // traverseKDTreeNode(pos, direction, kd_tree[s.node].left, kmin, kmax);
-    //             } else if(pmin[axis] >= split_value && pmax[axis] >= split_value) {
-    //                 stack[stack_pointer].node = kd_tree[s.node].right;
-    //                 stack[stack_pointer].kmin = s.kmin;
-    //                 stack[stack_pointer].kmax = s.kmax;
-    //                 // traverseKDTreeNode(pos, direction, kd_tree[s.node].right, kmin, kmax);
-    //             } else {
-    //                 float k_split = (split_value - pos[axis]) / direction[axis];
-    //                 if(pmin[axis] < split_value) {
-    //                     stack_pointer += 1;
-    //                     stack[stack_pointer].node = kd_tree[s.node].right;
-    //                     stack[stack_pointer].kmin = k_split;
-    //                     stack[stack_pointer].kmax = s.kmax;
-    //                     s.node = kd_tree[s.node].left;
-    //                     s.kmax = k_split;
-    //                     // traverseKDTreeNode(pos, direction, kd_tree[s.node].right, k_split, kmax);
-    //                     // traverseKDTreeNode(pos, direction, kd_tree[s.node].left, kmin, k_split);
-    //                 } else {
-    //                     stack_pointer += 1;
-    //                     stack[stack_pointer].node = kd_tree[s.node].left;
-    //                     stack[stack_pointer].kmin = k_split;
-    //                     stack[stack_pointer].kmax = s.kmax;
-    //                     s.node = kd_tree[s.node].right;
-    //                     s.kmax = k_split;
-    //                     // traverseKDTreeNode(pos, direction, kd_tree[s.node].left, k_split, kmax);
-    //                     // traverseKDTreeNode(pos, direction, kd_tree[s.node].right, kmin, k_split);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 };
 
 VolumeRenderer* VolumeRenderer::CreateGPU() {

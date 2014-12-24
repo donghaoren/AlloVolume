@@ -160,8 +160,8 @@ public:
                         case protocol::RendererParameters_RenderingMethod_RK4: {
                             renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
                         } break;
-                        case protocol::RendererParameters_RenderingMethod_AdaptiveRKV: {
-                            renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+                        case protocol::RendererParameters_RenderingMethod_AdaptiveRKF: {
+                            renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
                         } break;
                     }
                 } break;
@@ -217,11 +217,12 @@ public:
                         }
                         renderer->setLens(render_lens);
                         VolumeRenderer::RaycastingMethod raycasting_method = renderer->getRaycastingMethod();
-                        renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+                        renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
                         renderer->setTransferFunction(tf.get());
                         Image* img = Image::Create(task.task_vp_w(), task.task_vp_h());
                         renderer->setImage(img);
                         renderer->render(task.task_vp_x(), task.task_vp_y(), task.total_width(), task.total_height());
+                        Image::LevelsGPU(img, rgb_levels_min, rgb_levels_max, rgb_levels_pow);
                         img->setNeedsDownload();
 
                         protocol::RendererFeedback feedback;

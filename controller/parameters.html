@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AlloVolume Parameter Controller</title>
+    <script src="libraries/d3.v3.min.js" type="text/javascript"></script>
+    <script src="libraries/jquery-2.1.3.min.js" type="text/javascript"></script>
+    <script src="libraries/wampy-all.min.js" type="text/javascript"></script>
+    <script src="scripts/tf_utils.js" type="text/javascript"></script>
+    <script src="scripts/tf_editor.js" type="text/javascript"></script>
+    <script src="scripts/controls.js" type="text/javascript"></script>
+    <link rel="stylesheet" type="text/css" href="styles/style.css" />
+  </head>
+  <body>
+    <h2>Rendering Parameters</h2>
+    <div class="renderer-controls">
+        <div class="buttons">
+            <span class="label">Blending Method: </span>
+            <select id="sel-rendering-method">
+                <option value="BasicBlending">BasicBlending</option>
+                <option value="RK4">RK4</option>
+                <option value="AdaptiveRKF">AdaptiveRKF</option>
+            </select>
+        </div>
+        <div class="slider"><span class="label">Blending Coefficient: </span><span id="slider-blending-coefficient"></span></div>
+        <div class="slider"><span class="label">Focal Distance: </span><span id="slider-focal-distance"></span></div>
+        <div class="slider"><span class="label">RGB Levels: </span><span id="slider-levels"></span></div>
+    </div>
+    <h2>Transfer Function</h2>
+    <div id="tf_editor" class="tf_editor"></div>
+    <h2>Presets</h2>
+    <div class="renderer-controls">
+        <div class="buttons"><span class="label">Name: </span><input id="input-preset-name" type="text" style="width:300px" /></div>
+        <div class="buttons"><span class="label">Description: </span><input id="input-preset-description" type="text" style="width:500px" /></div>
+        <div class="buttons"><span class="label"></span><span class="btn" id="btn-save-preset">Save Preset</span></div>
+    </div>
+    <ul id="preset-list" class="renderer-controls">
+    </ul>
+    <script type="text/javascript">
+        var client_id = "tf_editor.html;" + (new Date().getTime());
+
+        var editor = new TransferFunctionEditor(d3.select("#tf_editor"));
+        d3.select(window).on("resize", function() {
+            editor.resize();
+        });
+
+        var wamp = new Wampy("/ws", { realm: "anonymous" });
+        var response_t = {
+            onSuccess: function() {},
+            onError: function(err) { console.log('RPC call failed with error ' + err); }
+        };
+
+        editor.onTransferFunctionChanged = function(tf) {
+            wamp.call('allovolume.renderer.set_transfer_function', { sender: client_id, tf: tf }, response_t);
+        };
+
+        var sl_blending_coefficient = new Slider(d3.select("#slider-blending-coefficient"), "log", 1e-2, 1e10, 1e9);
+        var sl_focal_distance = new Slider(d3.select("#slider-focal-distance"), "log", 1e-2, 1e10, 5e8);
+
+        sl_blending_coefficient.onChange = function(value) {
+            wamp.call("allovolume.renderer.set_renderer_parameters", {
+                sender: client_id,
+                blending_coefficient: value,
+                method: d3.select("#sel-rendering-method").node().value
+            }, response_t);
+        };
+        d3.select("#sel-rendering-method").on("change", function() {
+            sl_blending_coefficient.onChange(sl_blending_coefficient.value);
+        });
+
+        sl_focal_distance.onChange = function(value) {
+            wamp.call("allovolume.renderer.set_lens_parameters", {
+                sender: client_id,
+                focal_distance: value,
+                eye_separation: value / 80.0
+            }, response_t);
+        };
+
+        var sl_levels = new SliderLevels(d3.select("#slider-levels"));
+        sl_levels.onChange = function(min, max, pow) {
+            wamp.call("allovolume.renderer.set_rgb_levels", { sender: client_id, min: min, max: max, pow: pow }, response_t);
+        };
+
+        wamp.subscribe("allovolume.renderer.parameter_changed", function(item) {
+            var event = item[0];
+            if(event.sender == client_id) return;
+
+            if(event.type == "SetRendererParameters") {
+                sl_blending_coefficient.set(event.renderer_parameters.blending_coefficient);
+                d3.select("#sel-rendering-method").node().value = event.renderer_parameters.method;
+            }
+
+            if(event.type == "SetLensParameters") {
+                sl_focal_distance.set(event.lens_parameters.focal_distance);
+            }
+
+            if(event.type == "SetRGBLevels") {
+                sl_levels.set(event.rgb_levels.min, event.rgb_levels.max, event.rgb_levels.pow);
+            }
+
+            if(event.type == "SetTransferFunction") {
+                editor.setTransferFunction(event.transfer_function);
+            }
+        });
+
+        wamp.call("allovolume.renderer.get_rgb_levels", { }, {
+            onSuccess: function(result) {
+                var rgb_levels = result[0];
+                sl_levels.set(rgb_levels.min, rgb_levels.max, rgb_levels.pow);
+            },
+            onError: function(err) { console.log('allovolume.renderer.get_rgb_levels: ' + err); }
+        });
+
+        wamp.call("allovolume.renderer.get_transfer_function", { }, {
+            onSuccess: function(result) {
+                var tf = result[0];
+                editor.setTransferFunction(tf);
+            },
+            onError: function(err) { console.log('allovolume.renderer.get_transfer_function: ' + err); }
+        });
+
+        wamp.call("allovolume.renderer.get_renderer_parameters", { }, {
+            onSuccess: function(result) {
+                var p = result[0];
+                sl_blending_coefficient.set(p.blending_coefficient);
+                d3.select("#sel-rendering-method").node().value = p.method;
+            },
+            onError: function(err) { console.log('allovolume.renderer.get_renderer_parameters: ' + err); }
+        });
+
+        wamp.call("allovolume.renderer.get_lens_parameters", { }, {
+            onSuccess: function(result) {
+                var p = result[0];
+                sl_focal_distance.set(p.focal_distance);
+            },
+            onError: function(err) { console.log('allovolume.renderer.get_renderer_parameters: ' + err); }
+        });
+
+        var reload_presets = function() {
+            wamp.call("allovolume.renderer.list_presets", { }, {
+                onSuccess: function(result) {
+                    var list = result[0];
+                    var sel = d3.select("#preset-list").selectAll("li").data(list, function(d) { return d; });
+                    var li = sel.enter().append("li");
+                    li.append("span").text(function(d) { return d + " "; });
+                    li.append("span").attr("class", "btn").text("Load").on("click", function(d) {
+                        wamp.call("allovolume.renderer.load_preset", { name: d }, response_t);
+                    });
+                    sel.exit().remove();
+                },
+                onError: function(err) { console.log('allovolume.renderer.list_presets: ' + err); }
+            });
+        };
+
+        reload_presets();
+
+        d3.select("#btn-save-preset").on("click", function() {
+            var name = d3.select("#input-preset-name").node().value.trim();
+            if(name == "") return;
+            wamp.call("allovolume.renderer.save_preset", {
+                name: name,
+                description: d3.select("#input-preset-description").node().value
+            }, {
+                onSuccess: function(result) {
+                    reload_presets();
+                },
+                onError: function(err) { console.log('allovolume.renderer.save_preset: ' + err); }
+            });
+        });
+    </script>
+  </body>
+</html>

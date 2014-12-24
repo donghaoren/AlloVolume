@@ -1,0 +1,114 @@
+@cMainText: #CCC;
+@cForeground: #FFF;
+@cBackground: #000;
+
+@blue: lighten(#1754AD, 10%);
+@yellow: #FF7F0E;
+@gray: gray;
+@active_color: @blue;
+@active_color_warm: @yellow;
+@active_color_gray: #333;
+
+@menu_border_color: #555;
+
+@panel_titlecolor: #444;
+
+@panel_background: #181818;
+
+@dataset_background: #202020;
+
+.drop_shadow {
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+}
+
+@colorscheme_index: 2;
+
+.gradient_background(@color, @val: 10%) {
+    background: @color;
+    background: -webkit-gradient(linear, left top, left bottom, from(lighten(@color, @val)), to(@color));
+    background: -moz-linear-gradient(top, lighten(@color, @val), @color);
+}
+
+.gradient_background_inv(@color, @val: 10%) {
+    background: @color;
+    background: -webkit-gradient(linear, left top, left bottom, from(@color), to(lighten(@color, @val)));
+    background: -moz-linear-gradient(top, @color, lighten(@color, @val));
+}
+
+.select_none {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+.select_text {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+.btn {
+    .gradient_background(extract(#F0F0F0 #202020, @colorscheme_index));
+    box-shadow: 0 0 1px extract(#AAA #000, @colorscheme_index);
+    display: inline-block;
+    height: 19px;
+    line-height: 19px;
+    font-size: 13px;
+    padding: 0 5px;
+    cursor: pointer;
+    .select_none();
+    &:hover {
+        .gradient_background(@active_color);
+        color: white;
+    }
+    &.active, &:active {
+        .gradient_background_inv(darken(@active_color, 5%));
+        color: white;
+    }
+}
+
+input, textarea {
+    font-size: 12px;
+    color: @cMainText;
+    border-radius: 0;
+    background: @cBackground;
+    background-color: @cBackground;
+    font-family: "Helvetica";
+    font-size: 12px;
+    &:hover, &:active, &:focus {
+        border-bottom: 1px solid @active_color;
+    }
+    width: calc(~"100% - 14px");
+    height: 17px;
+    border: 0;
+    border-bottom: 1px solid extract(#CCC #444, @colorscheme_index);
+    margin: 0;
+    padding: 1px 6px;
+    padding-bottom: 0px;
+}
+
+select {
+    outline: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    border: none;
+    margin: 0; padding: 0;
+    font-size: 12px;
+    color: @cMainText;
+    border-radius: 0;
+    background: @cBackground;
+    background-color: @cBackground;
+    font-family: "Helvetica";
+    font-size: 12px;
+    &:hover, &:active, &:focus {
+        border-bottom: 1px solid @active_color;
+    }
+    height: 17px;
+    border: 0;
+    border-bottom: 1px solid extract(#CCC #444, @colorscheme_index);
+    margin: 0;
+    padding: 1px 6px;
+    padding-bottom: 0px;
+}

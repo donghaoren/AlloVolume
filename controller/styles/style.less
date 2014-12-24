@@ -1,0 +1,113 @@
+@import "reset.less";
+@import "controls.less";
+
+body {
+    overflow-x: hidden;
+    overflow-y: scroll;
+    background: black;
+    font-size: 12px;
+    font-family: Helvetica;
+    line-height: 12px;
+    color: #AAA;
+    -webkit-user-select: none;
+}
+
+.btn, select, input {
+    margin-right: 5px;
+}
+
+.tf_editor {
+    .select_none();
+    color: #AAA;
+    font-size: 12px;
+    line-height: 12px;
+    .axis {
+        path, line {
+            fill: none;
+            stroke: #888;
+        }
+        text {
+            font-family: "Helvetica";
+            font-size: 12px;
+            fill: #888;
+        }
+    }
+    .axis_upper {
+        path, line {
+            fill: none;
+            stroke: #888;
+            shape-rendering: crispEdges;
+        }
+        text {
+            stroke: none; fill: none;
+        }
+    }
+    .graphics {
+        padding-top: 10px;
+        position: relative;
+    }
+    canvas {
+        position: absolute;
+        left: 0; top: 0;
+    }
+    svg {
+        position: absolute;
+        left: 0; top: 0;
+    }
+    .controls {
+        padding: 20px;
+    }
+}
+input { width: 6em; }
+.buttons {
+    margin: 5px 0px;
+}
+.buttons .sep {
+    display: inline-block;
+    width: 5px;
+}
+.renderer-controls {
+    padding: 10px 20px;
+}
+.label {
+    display: inline-block;
+    text-align: right;
+    width: 10em;
+}
+.slider {
+    .axis path,
+    .axis line {
+        fill: none;
+        stroke: #888;
+        shape-rendering: crispEdges;
+    }
+    .axis text {
+        font-family: sans-serif;
+        font-size: 9px;
+        fill: #888;
+    }
+}
+
+div.slider {
+    margin: 5px 0px;
+}
+div.slider span {
+    line-height: 30px;
+    vertical-align: top;
+}
+
+.popup-container {
+    background-color: black;
+    border: 1px solid #333;
+}
+
+h2 {
+    margin: 1em;
+    font-size: 1.3em;
+    font-weight: bold;
+}
+
+hr {
+    border: none;
+    border-bottom: 1px solid #333;
+}

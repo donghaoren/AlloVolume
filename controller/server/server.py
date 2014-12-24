@@ -16,6 +16,8 @@ from controller_client import config, Initialize, ListenEvents, RequestResponse
 from controller_client import SetVolume
 from controller_client import SetPose, SetTransferFunction, SetRGBLevels, SetRendererParameters, SetLensParameters
 from controller_client import GetPose, GetTransferFunction, GetRGBLevels, GetRendererParameters, GetLensParameters
+from controller_client import SavePreset, LoadPreset, ListPresets
+from controller_client import HDRendering, GetImage
 
 zmq_context = zmq.Context()
 
@@ -26,9 +28,7 @@ class ControllerServer(ApplicationSession):
     def onJoin(self, details):
         def listen_for_parameter_change():
             for event in ListenEvents():
-                print event
-                import sys
-                sys.stdout.flush()
+                self.publish("allovolume.renderer.parameter_changed", event)
 
         reactor.addSystemEventTrigger('before', 'shutdown', zmq_context.destroy)
         reactor.callInThread(listen_for_parameter_change)
@@ -44,6 +44,13 @@ class ControllerServer(ApplicationSession):
         yield self.register(GetLensParameters, u"allovolume.renderer.get_lens_parameters")
         yield self.register(SetRendererParameters, u"allovolume.renderer.set_renderer_parameters")
         yield self.register(GetRendererParameters, u"allovolume.renderer.get_renderer_parameters")
+        yield self.register(SavePreset, u"allovolume.renderer.save_preset")
+        yield self.register(LoadPreset, u"allovolume.renderer.load_preset")
+        yield self.register(ListPresets, u"allovolume.renderer.list_presets")
+
+        yield self.register(HDRendering, u"allovolume.renderer.hd_rendering")
+
+        yield self.register(GetImage, u"allovolume.renderer.get_image")
 
 root = File(".")
 session_factory = RouterSessionFactory(RouterFactory())

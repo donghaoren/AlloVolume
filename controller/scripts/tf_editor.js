@@ -5,7 +5,6 @@ var TransferFunctionDescription = function() {
     this.domain = [ 1e-3, 1e8 ];
     this.scale = "log";
     this.layers = [];
-    this.layers.push(LayerTypes["gaussians"].create(this));
 };
 
 LayerTypes["gaussians"] = {
@@ -65,9 +64,9 @@ LayerTypes["gaussians"] = {
         text_name.attr("transform", "translate(" + info.tscale(t0) + "," + (info.axis_y + 40) + ")")
 
         var path_sigma0 = g.selectAll("path.sigma0").data([0]);
-        path_sigma0.enter().append("path").attr("class", "sigma0").attr("d", glyph_droplet(10, 10));
+        path_sigma0.enter().append("path").attr("class", "sigma0").attr("d", glyph_droplet(10, 10) + "M-4,-0.5 L4,-0.5 L4,0.5 L-4,0.5");
         var path_sigma1 = g.selectAll("path.sigma1").data([0]);
-        path_sigma1.enter().append("path").attr("class", "sigma1").attr("d", glyph_droplet(10, 10));
+        path_sigma1.enter().append("path").attr("class", "sigma1").attr("d", glyph_droplet(10, 10) + "M-4,-0.5 L4,-0.5 L4,0.5 L-4,0.5");
 
         var path_alpha0 = g.selectAll("path.alpha0").data([0]);
         path_alpha0.enter().append("path").attr("class", "alpha0").attr("d", glyph_droplet(10, 10));
@@ -83,9 +82,9 @@ LayerTypes["gaussians"] = {
         path_t1.attr("transform", "translate(" + info.tscale(t1) + "," + (info.axis_y) + ")")
                .attr("fill", rgba_color(array_to_color(layer.gradient[layer.gradient.length - 1])));
 
-        path_sigma0.attr("transform", "translate(" + info.tscale(t0 + sigma0 * (t1 - t0) / layer.ticks * 3) + "," + (info.axis_y) + ")")
+        path_sigma0.attr("transform", "translate(" + info.tscale(t0 + sigma0 * (t1 - t0) / layer.ticks * 3) + "," + (info.axis_y) + ") rotate(-90)")
                .attr("fill", rgba_color(array_to_color(layer.gradient[0])));
-        path_sigma1.attr("transform", "translate(" + info.tscale(t1 - sigma1 * (t1 - t0) / layer.ticks * 3) + "," + (info.axis_y) + ")")
+        path_sigma1.attr("transform", "translate(" + info.tscale(t1 - sigma1 * (t1 - t0) / layer.ticks * 3) + "," + (info.axis_y) + ") rotate(90)")
                .attr("fill", rgba_color(array_to_color(layer.gradient[layer.gradient.length - 1])));
 
         path_alpha0.attr("transform", "translate(" + info.tscale(t0) + "," + info.alpha_scale(alpha0) + ") rotate(180)")
@@ -451,13 +450,23 @@ LayerTypes["block"] = {
             info.did_edit_layer(layer);
         });
     },
-    on_select_color: function(color, tf, layer, info) {
-        layer.color[0] = color[0];
-        layer.color[1] = color[1];
-        layer.color[2] = color[2];
-        info.did_edit_layer(layer);
-    },
-    editor_interface: function() {
+    editor_interface: function(div, tf, layer, info) {
+        var color_btn = div.selectAll("span.color").data([0]);
+        color_btn.enter().append("span")
+            .attr("class", "color btn")
+            .style({
+                "padding": "2px 10px"
+            }).on("click", function() {
+                var pos = $(color_btn.node()).offset();
+                var picker = new ColorPicker(pos.left + $(color_btn.node()).outerWidth() + 5, pos.top);
+                picker.onSelectColor = function(c) {
+                    layer.color[0] = c[0];
+                    layer.color[1] = c[1];
+                    layer.color[2] = c[2];
+                    info.did_edit_layer(layer);
+                };
+            });
+        color_btn.style("background-color", rgba_color(array_to_color(layer.color.slice(0, 3))));
     }
 };
 
@@ -492,94 +501,6 @@ TransferFunctionDescription.prototype.inverse = function(value) {
     return tv;
 };
 
-// TransferFunctionDescription.prototype.sampleGradient = function(t) {
-//     for(var i = 0; i < this.gradient_stops.length - 1; i++) {
-//         var t0 = this.gradient_stops[i].t;
-//         var t1 = this.gradient_stops[i + 1].t;
-//         if(t0 == t1) continue;
-//         if(t0 <= t && t <= t1) {
-//             var p = (t - t0) / (t1 - t0);
-//             var c1 = this.gradient_stops[i], c2 = this.gradient_stops[i + 1];
-//             var alpha = this.gradient_alpha_max * Math.pow(t, this.gradient_alpha_power);
-//             return {
-//                 r: c1.r * (1 - p) + c2.r * p,
-//                 g: c1.g * (1 - p) + c2.g * p,
-//                 b: c1.b * (1 - p) + c2.b * p,
-//                 a: (c1.a * (1 - p) + c2.a * p) * alpha,
-//             };
-//         }
-//     }
-//     return {
-//         r: 0, g: 0, b: 0, a: 0
-//     };
-// };
-
-// TransferFunctionDescription.prototype.sampleGaussian = function(t) {
-//     var c = null;
-//     for(var i = 0; i < this.gaussians.length; i++) {
-//         var g = this.gaussians[i];
-//         var a = g.color.a * Math.exp(-Math.pow((g.center - t) / g.sigma, 2) / 2);
-//         var color = { r: g.color.r, g: g.color.g, b: g.color.b, a: a };
-//         if(c) c = blend_color(color, c);
-//         else c = color;
-//     }
-//     return c;
-// };
-
-// TransferFunctionDescription.prototype.sample = function(t) {
-//     var g1 = this.sampleGradient(t);
-//     var g2 = this.sampleGaussian(t);
-//     if(g2) {
-//         return blend_color(g2, g1);
-//     } else {
-//         return g1;
-//     }
-// };
-
-// TransferFunctionDescription.prototype.generateTexture = function(size) {
-//     if(!size) size = 1600;
-//     var samples = [];
-//     for(var i = 0; i < size; i++) {
-//         var t = (i + 0.5) / size;
-//         var r = this.sample(t);
-//         samples.push([ r.r, r.g, r.b, r.a ]);
-//     }
-//     return samples;
-// };
-
-// TransferFunctionDescription.prototype.generateGradient = function(gradient, alpha_max, alpha_pow) {
-//     if(alpha_max === undefined) alpha_max = 0.1;
-//     if(alpha_pow === undefined) alpha_pow = 1;
-//     this.gradient_alpha_max = alpha_max;
-//     this.gradient_alpha_power = alpha_pow;
-//     var self = this;
-//     if(typeof(gradient) == "string") {
-//         gradient = TransferFunctionDescription.Gradients[gradient];
-//     }
-//     if(gradient.type == "uniform") {
-//         var length = gradient.values.length;
-//         this.gradient_stops = [];
-//         for(var index = 0; index < gradient.values.length; index++) {
-//             var rgb = gradient.values[index];
-//             var t = index / (length - 1);
-//             this.gradient_stops.push({ t: t, r: rgb[0], g: rgb[1], b: rgb[2], a: rgb.length == 4 ? rgb[3] : 1 });
-//         }
-//     }
-// };
-
-// TransferFunctionDescription.prototype.generateGaussians = function(tmin, tmax, count) {
-//     for(var i = 1; i <= count; i++) {
-//         var t = i / (count) * (tmax - tmin) + tmin;
-//         var c = this.sampleGradient(t);
-//         c.a = this.sampleGradient(t).a;
-//         this.gaussians.push({
-//             center: t,
-//             sigma: (tmax - tmin) / (count) / 15,
-//             color: c
-//         });
-//     }
-// };
-
 var TransferFunctionEditor = function(wrapper) {
     var self = this;
     this.wrapper = wrapper;
@@ -601,31 +522,25 @@ var TransferFunctionEditor = function(wrapper) {
     this.g_layers = this.svg.append("g").attr("class", "layers");
 
     this.buttons = this.controls.append("div");
-    this.color_picker = this.controls.append("div");
     this.layer_editors = this.controls.append("div");
 
-    this.color_picker.selectAll("span.color").data(Colors).enter().append("span")
-        .attr("class", "color btn")
-        .style({
-            "display": "inline-block",
-            "width": "1em",
-            "height": "1em",
-            "margin": "0.4em 2px"
-        })
-        .style("background-color", function(d) { return rgba_color(array_to_color(d)) })
-        .on("click", function(d) {
-            if(self.on_select_color) self.on_select_color(d);
-        });
+    this.sel_scale = this.buttons.append("select");
+    this.sel_scale.append("option").attr("value", "linear").text("Linear");
+    this.sel_scale.append("option").attr("value", "log").text("Log");
 
     this.buttons.append("span").text("Min: ");
     this.range_min_input = this.buttons.append("input").attr("type", "text");
+
     this.buttons.append("span").text("Max: ");
     this.range_max_input = this.buttons.append("input").attr("type", "text");
+
     this.buttons.append("span")
       .attr("class", "btn")
-      .text("Range")
+      .text("Set Scale")
       .on("click", function() {
+        self.tf.scale = self.sel_scale.node().value;
         self.tf.domain = [ parseFloat(self.range_min_input.node().value), parseFloat(self.range_max_input.node().value) ];
+        self.did_edit();
         self.render();
       });
 
@@ -683,9 +598,10 @@ TransferFunctionEditor.prototype.render = function() {
     var self = this;
     var tf = this.tf;
 
-    var number_format = d3.format("e");
+    var number_format = d3.format(".3e");
     self.range_min_input.node().value = number_format(tf.domain[0]);
     self.range_max_input.node().value = number_format(tf.domain[1]);
+    self.sel_scale.node().value = tf.scale;
 
     var axis_y = this.canvas_height - 40;
     var axis_y_upper = axis_y - 26;
@@ -778,14 +694,6 @@ TransferFunctionEditor.prototype.render = function() {
     });
     div_layer_editors.exit().remove();
 
-    self.on_select_color = function(color) {
-        if(self.selected_layer) {
-            if(LayerTypes[self.selected_layer.t].on_select_color) {
-                LayerTypes[self.selected_layer.t].on_select_color(color, tf, self.selected_layer, info);
-            }
-        }
-    };
-
     var ctx = this.canvas.node().getContext("2d");
 
     ctx.clearRect(0, 0, this.canvas.node().width, this.canvas.node().height);
@@ -841,4 +749,14 @@ TransferFunctionEditor.prototype.did_edit = function() {
             layers: tf.layers
         });
     }
+};
+
+TransferFunctionEditor.prototype.setTransferFunction = function(tf) {
+    this.tf = Object.create(TransferFunctionDescription.prototype);
+    for(var key in tf) {
+        if(tf.hasOwnProperty(key)) {
+            this.tf[key] = tf[key];
+        }
+    }
+    this.render();
 };

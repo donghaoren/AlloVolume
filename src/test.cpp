@@ -48,7 +48,7 @@ void super3d_test() {
     renderer->setBlendingCoefficient(1e10);
     float sz = 2.5e10;
     renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
-    //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    //renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
     renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
     int width = 400, height = 400;
@@ -110,7 +110,7 @@ void super3d_closeup_cell_boundary() {
     renderer->setBlendingCoefficient(1e8);
     float sz = 2.5e10;
     renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
-    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
     //renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
     int width = 600, height = 400;
@@ -201,7 +201,7 @@ void super3d_render_volume(int index_min, int index_max) {
     float sz = 2.5e10;
     renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
 
-    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
+    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
     //renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
 
     int width = 1920, height = 1280;
@@ -386,16 +386,16 @@ void super3d_performance_test() {
     img->setNeedsDownload();
     img->save("super3d_performance_test_basic.png", "png16");
 
-    // printf("Adaptive RKV:\n");
-    // renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKVMethod);
-    // for(int i = 0; i < 5; i++) {
-    //     double t0 = getPreciseTime();
-    //     renderer->render();
-    //     double t1 = getPreciseTime();
-    //     printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
-    // }
-    // img->setNeedsDownload();
-    // img->save("super3d_performance_test_rkv.png", "png16");
+    printf("Adaptive RKV:\n");
+    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
+    for(int i = 0; i < 5; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double t1 = getPreciseTime();
+        printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    }
+    img->setNeedsDownload();
+    img->save("super3d_performance_test_rkv.png", "png16");
 
 }
 
@@ -417,6 +417,108 @@ void kdtree_test() {
     renderer->setBackgroundColor(Color(0, 0, 0, 1));
 }
 
+class SynVolumeBlocks : public VolumeBlocks {
+public:
+    float* data;
+    int size;
+    BlockDescription block;
+
+    float func(float x, float y, float z) {
+        //x /= 2; y /= 2; z /= 2;
+        return (cos(x) + cos(y) + cos(z)) * (cos(x) + cos(y) + cos(z));
+    }
+
+    SynVolumeBlocks(int size_) {
+        size = size_;
+        data = new float[size * size * size];
+        block.ghost_count = 0;
+        block.min = Vector(-5, -5, -5);
+        block.max = Vector(5, 5, 5);
+        block.offset = 0;
+        block.xsize = size;
+        block.ysize = size;
+        block.zsize = size;
+
+        for(int i = 0; i < size; i++)
+            for(int j = 0; j < size; j++)
+                for(int k = 0; k < size; k++) {
+                    float x = (float)i / (float)(size - 1) * (block.max.x - block.min.x) + block.min.x;
+                    float y = (float)j / (float)(size - 1) * (block.max.y - block.min.y) + block.min.y;
+                    float z = (float)k / (float)(size - 1) * (block.max.z - block.min.z) + block.min.z;
+                    data[i * size * size + j * size + k] = func(x, y, z);
+                }
+    }
+    virtual float* getData() {
+        return data;
+    }
+    virtual size_t getDataSize() {
+        return size * size * size;
+    }
+    virtual int getBlockCount() {
+        return 1;
+    }
+    virtual BlockDescription* getBlockDescription(int index) {
+        return &block;
+    }
+    virtual BlockTreeInfo* getBlockTreeInfo(int index) {
+        return NULL;
+    }
+};
+
+void syn_performance_test() {
+    SynVolumeBlocks volume(128);
+    VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
+    Lens* lens = Lens::CreatePerspective(PI / 2.0);
+    Pose pose = pose_lookat(Vector(5, 0, 3), Vector(0, 0, 0), Vector(0, 0, 1));
+    renderer->setPose(pose);
+    TransferFunction* tf_far = TransferFunction::CreateGaussianTicks(0, 12, TransferFunction::kLinearScale, 50);
+    renderer->setTransferFunction(tf_far);
+
+    Image* img = Image::Create(512, 512);
+
+    renderer->setLens(lens);
+    renderer->setVolume(&volume);
+    renderer->setImage(img);
+    renderer->setBlendingCoefficient(1);
+    renderer->setBackgroundColor(Color(0, 0, 0, 1));
+    float sz = 5;
+    renderer->setBoundingBox(Vector(-sz, -sz, -sz), Vector(+sz, +sz, +sz));
+
+    printf("RK4:\n");
+    renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
+    for(int i = 0; i < 1; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double t1 = getPreciseTime();
+        printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    }
+    img->setNeedsDownload();
+    img->save("syn_performance_test_rkv.png", "png16");
+
+    printf("Basic:\n");
+    renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
+    for(int i = 0; i < 1; i++) {
+        double t0 = getPreciseTime();
+        renderer->render();
+        double t1 = getPreciseTime();
+        printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    }
+    img->setNeedsDownload();
+    img->save("syn_performance_test_basic.png", "png16");
+
+    // printf("Adaptive RKV:\n");
+    // renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
+    // for(int i = 0; i < 5; i++) {
+    //     double t0 = getPreciseTime();
+    //     renderer->render();
+    //     double t1 = getPreciseTime();
+    //     printf("  Size: %dx%d, Time: %.3lf ms, FPS = %.3lf\n", img->getWidth(), img->getHeight(), (t1 - t0) * 1000, 1.0 / (t1 - t0));
+    // }
+    // img->setNeedsDownload();
+    // img->save("super3d_performance_test_rkv.png", "png16");
+
+}
+
 int main(int argc, char* argv[]) {
     //convert_format();
     //render_one_frame_as_png_super3d(argc, argv, true);
@@ -427,6 +529,7 @@ int main(int argc, char* argv[]) {
 
     //allosphere_calibration_test();
     super3d_performance_test();
+    //syn_performance_test();
     //super3d_highres();
     //super3d_highres_stereo();
     //kdtree_test();

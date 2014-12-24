@@ -5,10 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <sys/time.h>
 #include <readline/readline.h>
 
 #include <string>
 #include <vector>
+#include <fstream>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -18,18 +21,25 @@
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/filesystem.hpp>
 
 #include "allovolume_protocol.pb.h"
 
 #include "allovolume_common.h"
-
-#include <pthread.h>
 
 using namespace std;
 using namespace allovolume;
 
 ConfigParser config;
 void* zmq_context;
+
+double getPreciseTime() {
+    timeval t;
+    gettimeofday(&t, 0);
+    double s = t.tv_sec;
+    s += t.tv_usec / 1000000.0;
+    return s;
+}
 
 class Controller {
 public:
@@ -46,6 +56,7 @@ public:
 
     // The current state.
     AlloVolumeState state;
+    string dataset_name;
 
     set<string> barrier_clients;
     set<string> all_clients;
@@ -162,10 +173,13 @@ public:
                     task.waiting.erase(resp.task_id());
 
                     if(task.waiting.empty()) {
-                        printf("Saving image...\n");
                         Image::WriteImageFile(task.output_filename.c_str(), "png16", task.width, task.height, task.pixels);
-                        printf("Success!\n");
                         hd_rendering_tasks.erase(resp.identifier());
+                        protocol::ParameterChangeEvent event;
+                        event.set_sender("controller");
+                        event.set_type(protocol::ParameterChangeEvent_Type_HDRenderingComplete);
+                        event.set_hd_rendering_filename(task.output_filename);
+                        zmq_protobuf_send(event, socket_events);
                     }
                 }
 
@@ -174,6 +188,8 @@ public:
     }
 
     void RequestHandler_LoadVolume(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        dataset_name = request.volume_dataset();
+
         protocol::RendererBroadcast msg;
         msg.set_type(protocol::RendererBroadcast_Type_LoadVolume);
         VolumeBlocks* volume = VolumeBlocks::LoadFromFile(request.volume_filename().c_str());
@@ -288,6 +304,125 @@ public:
         *response.mutable_lens_parameters() = state.lens_parameters;
     }
 
+    void RequestHandler_SavePreset(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        protocol::ParameterPreset preset;
+
+        preset.set_dataset(dataset_name);
+        preset.set_timestamp(getPreciseTime() * 1000);
+        preset.set_name(request.preset_name());
+        preset.set_description(request.preset_description());
+
+        *preset.mutable_transfer_function() = state.transfer_function;
+        *preset.mutable_pose() = state.pose;
+        *preset.mutable_rgb_levels() = state.rgb_levels;
+        *preset.mutable_renderer_parameters() = state.renderer_parameters;
+        *preset.mutable_lens_parameters() = state.lens_parameters;
+
+        std::fstream output(string("presets/") + request.preset_name(), std::ios::out | std::ios::binary);
+        preset.SerializeToOstream(&output);
+    }
+
+    void RequestHandler_LoadPreset(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        protocol::ParameterPreset preset;
+        try {
+            std::fstream input(string("presets/") + request.preset_name(), std::ios::in | std::ios::binary);
+            preset.ParseFromIstream(&input);
+        } catch(...) {
+            response.set_status("E_NOT_FOUND");
+            return;
+        }
+        {
+            state.pose = preset.pose();
+            protocol::RendererBroadcast msg;
+            msg.set_type(protocol::RendererBroadcast_Type_SetPose);
+            *msg.mutable_pose() = state.pose;
+            zmq_protobuf_send(msg, socket_pubsub);
+
+            protocol::ParameterChangeEvent event;
+            event.set_sender(request.sender());
+            event.set_type(protocol::ParameterChangeEvent_Type_SetPose);
+            *event.mutable_pose() = state.pose;
+            zmq_protobuf_send(event, socket_events);
+        }
+        {
+            state.lens_parameters = preset.lens_parameters();
+            protocol::RendererBroadcast msg;
+            msg.set_type(protocol::RendererBroadcast_Type_SetLensParameters);
+            *msg.mutable_lens_parameters() = state.lens_parameters;
+            zmq_protobuf_send(msg, socket_pubsub);
+
+            protocol::ParameterChangeEvent event;
+            event.set_sender(request.sender());
+            event.set_type(protocol::ParameterChangeEvent_Type_SetLensParameters);
+            *event.mutable_lens_parameters() = state.lens_parameters;
+            zmq_protobuf_send(event, socket_events);
+        }
+        {
+            state.renderer_parameters = preset.renderer_parameters();
+            protocol::RendererBroadcast msg;
+            msg.set_type(protocol::RendererBroadcast_Type_SetRendererParameters);
+            *msg.mutable_renderer_parameters() = state.renderer_parameters;
+            zmq_protobuf_send(msg, socket_pubsub);
+
+            protocol::ParameterChangeEvent event;
+            event.set_sender(request.sender());
+            event.set_type(protocol::ParameterChangeEvent_Type_SetRendererParameters);
+            *event.mutable_renderer_parameters() = state.renderer_parameters;
+            zmq_protobuf_send(event, socket_events);
+        }
+        {
+            state.transfer_function = preset.transfer_function();
+            protocol::RendererBroadcast msg;
+            msg.set_type(protocol::RendererBroadcast_Type_SetTransferFunction);
+            *msg.mutable_transfer_function() = state.transfer_function;
+            zmq_protobuf_send(msg, socket_pubsub);
+
+            protocol::ParameterChangeEvent event;
+            event.set_sender(request.sender());
+            event.set_type(protocol::ParameterChangeEvent_Type_SetTransferFunction);
+            *event.mutable_transfer_function() = state.transfer_function;
+            zmq_protobuf_send(event, socket_events);
+        }
+        {
+            state.rgb_levels = preset.rgb_levels();
+            protocol::RendererBroadcast msg;
+            msg.set_type(protocol::RendererBroadcast_Type_SetRGBLevels);
+            *msg.mutable_rgb_levels() = state.rgb_levels;
+            zmq_protobuf_send(msg, socket_pubsub);
+
+            protocol::ParameterChangeEvent event;
+            event.set_sender(request.sender());
+            event.set_type(protocol::ParameterChangeEvent_Type_SetRGBLevels);
+            *event.mutable_rgb_levels() = state.rgb_levels;
+            zmq_protobuf_send(event, socket_events);
+        }
+
+        set_needs_render();
+    }
+
+    void RequestHandler_ListPresets(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        boost::filesystem::directory_iterator iter("presets"), iter_end;
+        for(; iter != iter_end; ++iter) {
+            if(boost::filesystem::is_regular_file(iter->path())) {
+                string filename = iter->path().filename().string();
+                *response.add_preset_list() = filename;
+            }
+        }
+    }
+
+    void RequestHandler_GetImage(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        FILE* fin = fopen(request.image_filename().c_str(), "rb");
+        if(!fin) return;
+        fseeko(fin, 0, SEEK_END);
+        size_t file_size = ftello(fin);
+        fseeko(fin, 0, SEEK_SET);
+        unsigned char* data = new unsigned char[file_size];
+        fread(data, 1, file_size, fin);
+        fclose(fin);
+        response.set_binary_data(data, file_size);
+        delete [] data;
+    }
+
     void RequestHandler_HDRendering(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
         const protocol::HDRenderingTask& task = request.hd_rendering_task();
         int block_width = 500;
@@ -350,7 +485,14 @@ public:
         controller_request_handlers[protocol::ControllerRequest_Type_GetRendererParameters] = &Controller::RequestHandler_GetRendererParameters;
         controller_request_handlers[protocol::ControllerRequest_Type_SetLensParameters] = &Controller::RequestHandler_SetLensParameters;
         controller_request_handlers[protocol::ControllerRequest_Type_GetLensParameters] = &Controller::RequestHandler_GetLensParameters;
+
+        controller_request_handlers[protocol::ControllerRequest_Type_SavePreset] = &Controller::RequestHandler_SavePreset;
+        controller_request_handlers[protocol::ControllerRequest_Type_LoadPreset] = &Controller::RequestHandler_LoadPreset;
+        controller_request_handlers[protocol::ControllerRequest_Type_ListPresets] = &Controller::RequestHandler_ListPresets;
+
         controller_request_handlers[protocol::ControllerRequest_Type_HDRendering] = &Controller::RequestHandler_HDRendering;
+
+        controller_request_handlers[protocol::ControllerRequest_Type_GetImage] = &Controller::RequestHandler_GetImage;
     }
 
 
@@ -411,13 +553,13 @@ public:
                     controller_request_handlers.find(request.type());
                 if(it != controller_request_handlers.end()) {
                     try {
-                        (this->*(it->second))(request, response);
                         response.set_status("success");
+                        (this->*(it->second))(request, response);
                     } catch(...) {
-                        response.set_status("internal-error");
+                        response.set_status("E_INTERNAL_ERROR");
                     }
                 } else {
-                    response.set_status("unimplemented");
+                    response.set_status("E_NOT_IMPLEMENTED");
                 }
                 zmq_protobuf_send(response, socket_commands);
             }

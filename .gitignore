@@ -4,4 +4,7 @@ controller/ENV
 *.pb.cc
 *.pb.h
 *_pb2.py
+controller/allovolume.yaml
+controller/styles/style.css
+controller/run
 AlloVolume.sublime*

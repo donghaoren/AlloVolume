@@ -1,13 +1,13 @@
 package allovolume.protocol;
 
 message Pose {
-    required float x  = 1;
-    required float y  = 2;
-    required float z  = 3;
-    required float qx = 4;
-    required float qy = 5;
-    required float qz = 6;
-    required float qw = 7;
+    required float x  = 1 [ default = 0.0 ];
+    required float y  = 2 [ default = 0.0 ];
+    required float z  = 3 [ default = 0.0 ];
+    required float qx = 4 [ default = 0.0 ];
+    required float qy = 5 [ default = 0.0 ];
+    required float qz = 6 [ default = 0.0 ];
+    required float qw = 7 [ default = 1.0 ];
 }
 
 message TransferFunction {
@@ -15,32 +15,32 @@ message TransferFunction {
         Linear = 1;
         Log = 2;
     }
-    required Scale scale       = 1;
-    required float domain_min  = 2;
-    required float domain_max  = 3;
-    required int32 size        = 4;
-    required string layers     = 5;
+    required Scale scale       = 1 [ default = Linear ];
+    required float domain_min  = 2 [ default = 0 ];
+    required float domain_max  = 3 [ default = 1 ];
+    required int32 size        = 4 [ default = 1600 ];
+    required string layers     = 5 [ default = "[]" ];
 }
 
 message RGBLevels {
-    required float min  = 1;
-    required float max  = 2;
-    required float pow  = 3;
+    required float min = 1 [ default = 0.0 ];
+    required float max = 2 [ default = 1.0 ];
+    required float pow = 3 [ default = 1.0 ];
 }
 
 message LensParameters {
-    required float focal_distance = 1;
-    required float eye_separation = 2;
+    required float focal_distance = 1 [ default = 1.0 ];
+    required float eye_separation = 2 [ default = 0.0 ];
 }
 
 message RendererParameters {
     enum RenderingMethod {
-        BasicBlending          = 1;
-        RK4                    = 2;
-        AdaptiveRKV            = 3;
+        BasicBlending = 1;
+        RK4           = 2;
+        AdaptiveRKF   = 3;
     }
-    required RenderingMethod method      = 1;
-    required float blending_coefficient  = 2;
+    required RenderingMethod method      = 1 [ default = BasicBlending ];
+    required float blending_coefficient  = 2 [ default = 1.0 ];
 }
 
 message HDRenderingTask {
@@ -48,15 +48,15 @@ message HDRenderingTask {
         Equirectangular = 1;
         Perspective     = 2;
     }
-    required LensType lens_type                       = 1;
-    required LensParameters lens_parameters           = 2;
+    required LensType lens_type             = 1 [ default = Perspective ];
+    required LensParameters lens_parameters = 2;
 
     required string output_filename  = 3;
 
-    required int32 total_width       = 4;
-    required int32 total_height      = 5;
+    required int32 total_width       = 4 [ default = 2560 ];
+    required int32 total_height      = 5 [ default = 1440 ];
 
-    optional float perspective_fovx  = 10;
+    optional float perspective_fovx  = 10 [ default = 1.5707963268 ];
 
     optional string identifier       = 50;
     optional string task_id          = 51;
@@ -89,7 +89,7 @@ message RendererBroadcast {
 
         SetPose                = 20;
         SetTransferFunction    = 21;
-        SetRGBLevels            = 22;
+        SetRGBLevels           = 22;
         SetLensParameters      = 23;
         SetRendererParameters  = 24;
 
@@ -143,14 +143,20 @@ message ControllerRequest {
         SetTransferFunction   = 21;
         GetTransferFunction   = 31;
 
-        SetRGBLevels           = 22;
-        GetRGBLevels           = 32;
+        SetRGBLevels          = 22;
+        GetRGBLevels          = 32;
 
         SetLensParameters     = 23;
         GetLensParameters     = 33;
 
         SetRendererParameters = 24;
         GetRendererParameters = 34;
+
+        SavePreset            = 40;
+        LoadPreset            = 41;
+        ListPresets           = 45;
+
+        GetImage              = 50;
 
         HDRendering           = 200;
     }
@@ -159,12 +165,19 @@ message ControllerRequest {
     optional string sender                              = 2;
 
     optional string volume_filename                     = 11;
+    optional string volume_dataset                      = 12;
+    optional string volume_description                  = 13 [ default = "" ];
 
     optional Pose pose                                  = 20;
     optional TransferFunction transfer_function         = 21;
     optional RGBLevels rgb_levels                       = 22;
     optional LensParameters lens_parameters             = 23;
     optional RendererParameters renderer_parameters     = 24;
+
+    optional string preset_name                         = 40;
+    optional string preset_description                  = 41;
+
+    optional string image_filename                      = 50;
 
     optional HDRenderingTask hd_rendering_task          = 100;
 }
@@ -173,9 +186,10 @@ message ParameterChangeEvent {
     enum Type {
         SetPose                = 1;
         SetTransferFunction    = 2;
-        SetRGBLevels            = 3;
+        SetRGBLevels           = 3;
         SetLensParameters      = 4;
         SetRendererParameters  = 5;
+        HDRenderingComplete    = 6;
     }
 
     required Type type         = 1;
@@ -186,13 +200,33 @@ message ParameterChangeEvent {
     optional RGBLevels rgb_levels                   = 12;
     optional LensParameters lens_parameters         = 13;
     optional RendererParameters renderer_parameters = 14;
+
+    optional string hd_rendering_filename           = 20;
 }
 
 message ControllerResponse {
-    required string status = 1;
+    required string status                              = 1 [ default = "success" ];
     optional Pose pose                                  = 20;
     optional TransferFunction transfer_function         = 21;
     optional RGBLevels rgb_levels                       = 22;
     optional LensParameters lens_parameters             = 23;
     optional RendererParameters renderer_parameters     = 24;
+
+    repeated string preset_list                         = 40;
+
+    optional bytes binary_data                          = 100;
+}
+
+message ParameterPreset {
+    // Metadata.
+    required int64 timestamp    = 1;
+    required string dataset     = 2;
+    required string name        = 3;
+    optional string description = 4 [ default = "" ];
+    // The state.
+    required TransferFunction transfer_function     = 10;
+    required Pose pose                              = 11;
+    required RGBLevels rgb_levels                   = 12;
+    required LensParameters lens_parameters         = 13;
+    required RendererParameters renderer_parameters = 14;
 }
