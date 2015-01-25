@@ -62,11 +62,13 @@ def RequestResponse(request):
     response.ParseFromString(controller.recv())
     return response
 
-def SetVolume(filename):
+def LoadVolume(filename, dataset, description):
     # Serialize the transfer function
-    msg = protocol.RendererCommand()
-    msg.type = RendererCommand.LoadVolume
+    msg = protocol.ControllerRequest()
+    msg.type = protocol.ControllerRequest.LoadVolume
     msg.volume_filename = filename
+    msg.volume_dataset = dataset
+    msg.volume_description = description
     return RequestResponse(msg).status == "success"
 
 def ParseTransferFunction(tf):

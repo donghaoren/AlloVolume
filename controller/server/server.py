@@ -13,7 +13,6 @@ import zmq
 import struct
 
 from controller_client import config, Initialize, ListenEvents, RequestResponse
-from controller_client import SetVolume
 from controller_client import SetPose, SetTransferFunction, SetRGBLevels, SetRendererParameters, SetLensParameters
 from controller_client import GetPose, GetTransferFunction, GetRGBLevels, GetRendererParameters, GetLensParameters
 from controller_client import SavePreset, LoadPreset, ListPresets
@@ -33,7 +32,6 @@ class ControllerServer(ApplicationSession):
         reactor.addSystemEventTrigger('before', 'shutdown', zmq_context.destroy)
         reactor.callInThread(listen_for_parameter_change)
 
-        yield self.register(SetVolume, u"allovolume.renderer.set_volume")
         yield self.register(SetPose, u"allovolume.renderer.set_pose")
         yield self.register(GetPose, u"allovolume.renderer.get_pose")
         yield self.register(SetTransferFunction, u"allovolume.renderer.set_transfer_function")
