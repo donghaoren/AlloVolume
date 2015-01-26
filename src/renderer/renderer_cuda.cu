@@ -811,7 +811,7 @@ public:
             nodes[nodes_count++] = node;
             return nodes_count - 1;
         }
-        float sp_min = FLT_MAX, sp_max = FLT_MIN;
+        float sp_min = FLT_MAX, sp_max = -FLT_MAX;
         for(int i = 0; i < block_count; i++) {
             sp_min = fminf(sp_min, blocks[blockids[i]].min[axis]);
             sp_max = fmaxf(sp_max, blocks[blockids[i]].max[axis]);
@@ -824,14 +824,23 @@ public:
         int* blocks_right = new int[block_count];
         int blocks_right_count = 0;
 
-        float eps = (sp_max - sp_min) * 1e-6;
         for(int i = 0; i < block_count; i++) {
-            if(blocks[blockids[i]].max[axis] < split_value + eps) {
+            if(blocks[blockids[i]].min[axis] + blocks[blockids[i]].max[axis] < 2.0f * split_value) {
                 blocks_left[blocks_left_count++] = blockids[i];
             } else {
                 blocks_right[blocks_right_count++] = blockids[i];
             }
         }
+
+        // if(blocks_left_count == 0 || blocks_right_count == 0) {
+        //     printf("Something wrong here.\n");
+        //     printf("%f %f %f\n", sp_min, sp_max, split_value);
+        //     for(int i = 0; i < block_count; i++) {
+        //         printf("%f %f\n", blocks[blockids[i]].min[axis], blocks[blockids[i]].max[axis]);
+        //     }
+        //     exit(-1);
+        // }
+
         int next_axis = (axis + 1) % 3;
         int left = buildKDTreeRecursive(nodes, nodes_count, blocks_left, blocks_left_count, next_axis);
         int right = buildKDTreeRecursive(nodes, nodes_count, blocks_right, blocks_right_count, next_axis);
