@@ -15,6 +15,8 @@ goto <frame>  : Goto a particular frame.
 next          : Goto the next frame.
 prev          : Goto the previous frame.
 play <fps>    : Playback (negative fps means backwards).
+step <step>   : Set step size for playback.
+stop          : Stop playback.
 """.strip()
 
 def globFiles(glob_expr):
@@ -44,29 +46,36 @@ class Application:
         self.volume_filename = None
         self.current_volume = None
         self.timer = None
+        self.step_size = 1
 
     def setCurrentFrame(self, frame_index):
         self.current_frame = frame_index % len(self.current_volume['files'])
         volume_filename = self.current_volume['files'][self.current_frame]
         if self.volume_filename != volume_filename:
             self.volume_filename = volume_filename
-        controller_client.LoadVolume(volume_filename, self.current_volume['name'], self.current_volume['description'])
+            print volume_filename
+            #controller_client.LoadVolume(volume_filename, self.current_volume['name'], self.current_volume['description'])
 
     def setCurrentVolume(self, volume):
         self.current_volume = volume
-        self.setCurrentFrame(0)
+        self.current_frame = None
 
     def tick(self, reverse):
         if reverse:
-            self.setCurrentFrame(self.current_frame - 1)
+            self.setCurrentFrame(self.current_frame - self.step_size)
         else:
-            self.setCurrentFrame(self.current_frame + 1)
+            self.setCurrentFrame(self.current_frame + self.step_size)
 
     def playback(self, fps, reverse = False):
         if self.timer:
             self.timer.stop()
         self.timer = LoopingCall(self.tick, reverse = reverse)
         self.timer.start(1.0 / fps)
+
+    def stopPlayback(self):
+        if self.timer:
+            self.timer.stop()
+            self.timer = None
 
     def process_command(self, cmd, line):
         try:
@@ -94,6 +103,13 @@ class Application:
                     self.setCurrentFrame(frame_index)
                 else:
                     print "Frame index out of range (0 - %d)" % (len(self.current_volume['files']) - 1)
+
+            if cmd == "stop":
+                self.stopPlayback()
+
+            if cmd == "step":
+                step, = line[1:]
+                self.step_size = int(step)
 
             if cmd == "next":
                 if not self.current_volume: self.setCurrentVolume(self.datasets[0])
