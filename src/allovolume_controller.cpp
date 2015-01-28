@@ -129,6 +129,7 @@ public:
             case protocol::RendererFeedback_Type_Register: {
 
                 all_clients.insert(feedback.client_name());
+                printf("Renderer connected: %s", feedback.client_name().c_str());
 
             } break;
             case protocol::RendererFeedback_Type_BarrierReady: {
