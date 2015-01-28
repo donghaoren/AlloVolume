@@ -440,6 +440,10 @@ public:
         HDRenderingTask& task_struct = *hd_rendering_tasks[identifier].get();
 
         vector<string> slaves(all_clients.begin(), all_clients.end());
+        if(slaves.size() == 0) {
+            printf("Unable to perform HDRendering: No renderer connected!\n");
+            return;
+        }
         int choice_index = 0;
 
         for(int x = 0; x < total_width; x += block_width) {
