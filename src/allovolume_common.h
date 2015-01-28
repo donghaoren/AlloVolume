@@ -43,7 +43,7 @@ int zmq_protobuf_recv(ProtobufT& message, void* socket) {
     int r = zmq_msg_recv(&msg, socket, 0);
     google::protobuf::io::ArrayInputStream stream(zmq_msg_data(&msg), zmq_msg_size(&msg));
     google::protobuf::io::CodedInputStream coded_input(&stream);
-    coded_input.SetTotalBytesLimit(512 * 1048576, 200 * 1048576);
+    coded_input.SetTotalBytesLimit(384 * 1048576, 200 * 1048576);
     message.ParseFromCodedStream(&coded_input);
     zmq_msg_close(&msg);
     return r;
