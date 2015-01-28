@@ -251,6 +251,7 @@ public:
     }
 
     void t_render_scene() {
+        if(!volume) return;
         for(int i = 0; i < slave->num_projections; i++) {
             renderer->setTransferFunction(tf.get());
             renderer->setLens(lenses[i].get());

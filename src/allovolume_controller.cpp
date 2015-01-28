@@ -318,14 +318,14 @@ public:
         *preset.mutable_renderer_parameters() = state.renderer_parameters;
         *preset.mutable_lens_parameters() = state.lens_parameters;
 
-        std::fstream output(string("presets/") + request.preset_name(), std::ios::out | std::ios::binary);
+        std::fstream output((string("presets/") + request.preset_name()).c_str(), std::ios::out | std::ios::binary);
         preset.SerializeToOstream(&output);
     }
 
     void RequestHandler_LoadPreset(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
         protocol::ParameterPreset preset;
         try {
-            std::fstream input(string("presets/") + request.preset_name(), std::ios::in | std::ios::binary);
+            std::fstream input((string("presets/") + request.preset_name()).c_str(), std::ios::in | std::ios::binary);
             preset.ParseFromIstream(&input);
         } catch(...) {
             response.set_status("E_NOT_FOUND");
