@@ -104,6 +104,7 @@ public:
     }
 
     void set_needs_render() {
+        if(all_clients.size() == 0) return;
         if(is_rendering) {
             needs_render = true;
         } else {
