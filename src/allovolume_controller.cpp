@@ -452,6 +452,8 @@ public:
 
         hd_rendering_tasks[identifier].reset(new HDRenderingTask());
         HDRenderingTask& task_struct = *hd_rendering_tasks[identifier].get();
+        task_struct.init(total_width, total_height);
+        task_struct.output_filename = task.output_filename();
 
         vector<string> slaves(all_clients.begin(), all_clients.end());
         if(slaves.size() == 0) {
@@ -484,8 +486,6 @@ public:
                 zmq_protobuf_send(msg, socket_pubsub);
             }
         }
-        task_struct.init(total_width, total_height);
-        task_struct.output_filename = task.output_filename();
     }
 
     typedef void (Controller::*controller_handler_t)(protocol::ControllerRequest&, protocol::ControllerResponse&);
