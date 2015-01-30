@@ -137,6 +137,9 @@ public:
                     printf("Volume: %llu blocks.\n", volume->getBlockCount());
                 } break;
                 case protocol::RendererBroadcast_Type_LoadVolumeFromFile: {
+                    volume.reset(VolumeBlocks::LoadFromFile(msg.volume_filename().c_str()));
+                    renderer->setVolume(volume.get());
+                    printf("Volume: %llu blocks.\n", volume->getBlockCount());
                     // TODO
                 } break;
                 case protocol::RendererBroadcast_Type_SetPose: {

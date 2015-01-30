@@ -207,6 +207,17 @@ public:
         set_needs_render();
     }
 
+    void RequestHandler_LoadVolumeFromFile(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        dataset_name = request.volume_dataset();
+
+        protocol::RendererBroadcast msg;
+        msg.set_type(protocol::RendererBroadcast_Type_LoadVolumeFromFile);
+        msg.set_volume_filename(request.volume_filename());
+        zmq_protobuf_send(msg, socket_pubsub);
+
+        set_needs_render();
+    }
+
     void RequestHandler_SetPose(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
         state.pose = request.pose();
 
@@ -482,6 +493,7 @@ public:
     std::map<protocol::ControllerRequest_Type, controller_handler_t> controller_request_handlers;
     void register_controller_requests() {
         controller_request_handlers[protocol::ControllerRequest_Type_LoadVolume] = &Controller::RequestHandler_LoadVolume;
+        controller_request_handlers[protocol::ControllerRequest_Type_LoadVolumeFromFile] = &Controller::RequestHandler_LoadVolumeFromFile;
         controller_request_handlers[protocol::ControllerRequest_Type_SetPose] = &Controller::RequestHandler_SetPose;
         controller_request_handlers[protocol::ControllerRequest_Type_GetPose] = &Controller::RequestHandler_GetPose;
         controller_request_handlers[protocol::ControllerRequest_Type_SetTransferFunction] = &Controller::RequestHandler_SetTransferFunction;
