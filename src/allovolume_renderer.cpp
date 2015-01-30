@@ -495,9 +495,11 @@ public:
                 barrier_thread.insert(event.thread_id);
                 if(barrier_thread.size() == total_threads) {
                     if(event.type == GPURenderThreadEvent::kPresent) {
-                        renderer_left.uploadImages();
-                        renderer_right.uploadImages();
-                        glutPostRedisplay();
+                        if(display_enabled) {
+                            renderer_left.uploadImages();
+                            renderer_right.uploadImages();
+                            glutPostRedisplay();
+                        }
                     }
                     barrier_thread.clear();
                 }
