@@ -30,6 +30,7 @@ using namespace allovolume;
 void* zmq_context;
 
 ConfigParser config;
+bool display_enabled = true;
 
 // The renderer has 4 state varaibles:
 //  volume: The volume to be rendered.
@@ -252,6 +253,8 @@ public:
 
     void t_render_scene() {
         if(!volume) return;
+        if(!display_enabled) return;
+
         for(int i = 0; i < slave->num_projections; i++) {
             renderer->setTransferFunction(tf.get());
             renderer->setLens(lenses[i].get());
@@ -281,23 +284,27 @@ public:
             sprintf(client_name, "%s:%d:%d", hostname, pid, thread_id);
             printf("Renderer: %s\n", client_name);
         }
-        for(int i = 0; i < slave->num_projections; i++) {
-            GLuint tex;
-            glGenTextures(1, &tex);
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            textures.push_back(tex);
+        if(display_enabled) {
+            for(int i = 0; i < slave->num_projections; i++) {
+                GLuint tex;
+                glGenTextures(1, &tex);
+                glBindTexture(GL_TEXTURE_2D, tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                textures.push_back(tex);
+            }
+            is_dirty = true;
         }
-        is_dirty = true;
         // Spawn the rendering thread.
         pthread_create(&thread, NULL, thread_proc, this);
     }
 
     void uploadImages() {
         if(!initialize_complete) return;
+        if(!display_enabled) return;
+
         if(is_dirty && !textures.empty()) {
             for(int i = 0; i < slave->num_projections; i++) {
                 glBindTexture(GL_TEXTURE_2D, textures[i]);
@@ -415,6 +422,10 @@ public:
     }
 
     void initWindow() {
+        if(config.get<string>("allovolume.disable_display", "false") == "true") {
+            display_enabled = false;
+            return;
+        }
 
         bool is_stereo = config.get<string>("allovolume.stereo", "false") == "true";
         bool is_fullscreen = config.get<string>("allovolume.fullscreen", "false") == "true";
@@ -490,16 +501,19 @@ public:
             }
             zmq_msg_close(&msg);
 
-            #ifdef __APPLE__
-                glutCheckLoop();
-            #else
-                glutMainLoopEvent();
-            #endif
+            if(display_enabled) {
+                #ifdef __APPLE__
+                    glutCheckLoop();
+                #else
+                    glutMainLoopEvent();
+                #endif
+            }
         }
     }
 
     void render_image(GPURenderThread& renderer) {
         if(!renderer.initialize_complete) return;
+        if(!display_enabled) return;
 
         int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
         int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);

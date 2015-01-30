@@ -455,7 +455,10 @@ LayerTypes["block"] = {
         color_btn.enter().append("span")
             .attr("class", "color btn")
             .style({
-                "padding": "2px 10px"
+                "vertical-align": "top",
+                "height": "19px",
+                "width": "20px",
+                "background": "none"
             }).on("click", function() {
                 var pos = $(color_btn.node()).offset();
                 var picker = new ColorPicker(pos.left + $(color_btn.node()).outerWidth() + 5, pos.top);
