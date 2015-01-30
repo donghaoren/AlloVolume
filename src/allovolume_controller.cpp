@@ -621,6 +621,14 @@ int main(int argc, char* argv[]) {
             zmq_protobuf_send(req, socket_cmdline);
 
         } else
+        if(args[0] == "volume-file" && args.size() == 2) {
+
+            protocol::ControllerRequest req;
+            req.set_type(protocol::ControllerRequest_Type_LoadVolumeFromFile);
+            req.set_volume_filename(args[1]);
+            zmq_protobuf_send(req, socket_cmdline);
+
+        } else
         if(args[0] == "pos" && args.size() == 4) {
 
             protocol::ControllerRequest req;
