@@ -46,7 +46,7 @@ namespace allovolume {
         const T& operator [] (int index) const { return cpu[index]; }
         void reserve(int count) {
             if(capacity < count) {
-                capacity = count * 1.2;
+                capacity = count;
                 delete [] cpu;
                 cudaDeallocate<T>(gpu);
                 cpu = new T[capacity];
