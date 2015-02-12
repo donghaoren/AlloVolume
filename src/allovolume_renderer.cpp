@@ -221,7 +221,7 @@ public:
                         }
                         renderer->setLens(render_lens);
                         VolumeRenderer::RaycastingMethod raycasting_method = renderer->getRaycastingMethod();
-                        renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+                        renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
                         renderer->setTransferFunction(tf.get());
                         Image* img = Image::Create(task.task_vp_w(), task.task_vp_h());
                         renderer->setImage(img);
