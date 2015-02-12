@@ -664,6 +664,15 @@ int main(int argc, char* argv[]) {
             zmq_protobuf_send(req, socket_cmdline);
 
         } else
+        if(args[0] == "preset" && args.size() == 2) {
+            protocol::ControllerRequest req;
+            req.set_type(protocol::ControllerRequest_Type_LoadPreset);
+
+            req.set_preset_name(args[1]);
+
+            zmq_protobuf_send(req, socket_cmdline);
+
+        } else
         if(args[0] == "hdrendering") {
             protocol::ControllerRequest req;
             req.set_type(protocol::ControllerRequest_Type_HDRendering);
