@@ -41,6 +41,7 @@ message RendererParameters {
     }
     required RenderingMethod method      = 1 [ default = BasicBlending ];
     required float blending_coefficient  = 2 [ default = 1.0 ];
+    required float step_size             = 3 [ default = 1.0 ];
 }
 
 message HDRenderingTask {

@@ -157,6 +157,7 @@ public:
                 } break;
                 case protocol::RendererBroadcast_Type_SetRendererParameters: {
                     renderer->setBlendingCoefficient(msg.renderer_parameters().blending_coefficient());
+                    renderer->setStepSizeMultiplier(msg.renderer_parameters().step_size());
                     switch(msg.renderer_parameters().method()) {
                         case protocol::RendererParameters_RenderingMethod_BasicBlending: {
                             renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);

@@ -70,6 +70,7 @@ struct ray_marching_parameters_t {
     int width, height;
     int block_count;
     float blend_coefficient;
+    float step_size_multiplier;
 
     VolumeRenderer::RaycastingMethod raycasting_method;
     Vector bbox_min, bbox_max;
@@ -356,8 +357,9 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
             // Render this block.
             float distance = kout - kin;
             float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            int steps = ceil(distance / voxel_size);
-            if(steps > block.xsize * 10) steps = block.xsize * 10;
+            int steps = ceil(distance / voxel_size / p.step_size_multiplier);
+            if(steps > block.xsize * 30) steps = block.xsize * 30;
+            if(steps < 2) steps = 2;
             float step_size = distance / steps;
 
             // Interpolate context.
@@ -433,8 +435,9 @@ void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
             // Render this block.
             float distance = kout - kin;
             float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            int steps = ceil(distance / voxel_size);
-            if(steps > block.xsize * 10) steps = block.xsize * 10;
+            int steps = ceil(distance / voxel_size / p.step_size_multiplier);
+            if(steps > block.xsize * 30) steps = block.xsize * 30;
+            if(steps < 2) steps = 2;
             float step_size = distance / steps;
 
             // Interpolate context.
@@ -577,6 +580,7 @@ public:
         kd_tree(512 * 5),
         rays(1000 * 1000),
         blend_coefficient(1.0),
+        step_size_multiplier(1.0),
         raycasting_method(kRK4Method),
         bbox_min(-1e20, -1e20, -1e20),
         bbox_max(1e20, 1e20, 1e20),
@@ -648,6 +652,13 @@ public:
         pose = pose_;
     }
 
+    virtual void setStepSizeMultiplier(float value) {
+        step_size_multiplier = value;
+    }
+    virtual float getStepSizeMultiplier() {
+        return step_size_multiplier;
+    }
+
     virtual void setBoundingBox(Vector min, Vector max) {
         bbox_min = min;
         bbox_max = max;
@@ -717,6 +728,7 @@ public:
 
         // Other parameters.
         pms.blend_coefficient = blend_coefficient;
+        pms.step_size_multiplier = step_size_multiplier;
         pms.bg_color = bg_color;
         // Block range.
         pms.pose = pose;
@@ -749,6 +761,7 @@ public:
     // Rendering parameters:
     Color bg_color;
     float blend_coefficient;
+    float step_size_multiplier;
     RaycastingMethod raycasting_method;
     // Global bounding box:
     Vector bbox_min, bbox_max;

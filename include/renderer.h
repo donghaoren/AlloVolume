@@ -117,6 +117,8 @@ public:
     // This should be approximately the size of your volume.
     virtual void setBlendingCoefficient(float value) = 0;
     virtual float getBlendingCoefficient() = 0;
+    virtual void setStepSizeMultiplier(float value) = 0;
+    virtual float getStepSizeMultiplier() = 0;
     // Transfer function.
     virtual void setTransferFunction(TransferFunction* tf) = 0;
     // Set lens.
