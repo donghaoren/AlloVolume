@@ -93,6 +93,7 @@ class Application:
                     print "Invalid dataset '%s'" % name
                 else:
                     self.setCurrentVolume(self.name_map[name])
+                    self.setCurrentFrame(0)
                     if 'preset' in self.current_volume:
                         controller_client.LoadPreset(self.current_volume['preset'])
 
