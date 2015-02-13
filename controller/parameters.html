@@ -21,6 +21,14 @@
                 <option value="RK4">RK4</option>
                 <option value="AdaptiveRKF">AdaptiveRKF</option>
             </select>
+            <span class="label">Steps: </span>
+            <select id="sel-steps">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+            </select>
         </div>
         <div class="slider"><span class="label">Blending Coefficient: </span><span id="slider-blending-coefficient"></span></div>
         <div class="slider"><span class="label">Focal Distance: </span><span id="slider-focal-distance"></span></div>
@@ -61,10 +69,14 @@
             wamp.call("allovolume.renderer.set_renderer_parameters", {
                 sender: client_id,
                 blending_coefficient: value,
-                method: d3.select("#sel-rendering-method").node().value
+                method: d3.select("#sel-rendering-method").node().value,
+                step_size: 1.0 / d3.select("#sel-steps").node().value
             }, response_t);
         };
         d3.select("#sel-rendering-method").on("change", function() {
+            sl_blending_coefficient.onChange(sl_blending_coefficient.value);
+        });
+        d3.select("#sel-steps").on("change", function() {
             sl_blending_coefficient.onChange(sl_blending_coefficient.value);
         });
 
