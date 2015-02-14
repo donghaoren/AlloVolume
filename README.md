@@ -55,13 +55,6 @@ Build:
 Launching
 ----
 
-### Launch the test program:
-
-
-1. Edit `test.cpp`, add stuff to test.
-2. `make`
-3. `./bin/test`
-
 ### Launch in the Allosphere:
 
 1. Copy `renderer` and `controller` to all rendering machines (or to the shared filesystem).
