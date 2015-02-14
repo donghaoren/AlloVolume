@@ -86,21 +86,6 @@ TARGET_LINK_LIBRARIES (
     ${FREEIMAGE_LIBRARIES}
 )
 
-ADD_EXECUTABLE (
-  test
-    src/test.cpp
-)
-
-ADD_EXECUTABLE (
-  test_glfw
-    src/test_glfw.cpp
-)
-
-ADD_EXECUTABLE (
-  test_glut
-    src/test_glut.cpp
-)
-
 ADD_EXECUTABLE ( dataset_converter
     src/dataset_converter.cpp
 )
@@ -143,26 +128,4 @@ TARGET_LINK_LIBRARIES (
     ${YAMLCPP_LIBRARIES}
     ${Protobuf_LIBRARIES}
     ${Boost_LIBRARIES}
-)
-
-TARGET_LINK_LIBRARIES (
-  test_glfw
-    ${GLFW_LIBRARIES}
-    ${OPENGL_LIBRARIES}
-)
-
-TARGET_LINK_LIBRARIES (
-  test_glut
-    ${GLUT_LIBRARIES}
-    ${OPENGL_LIBRARIES}
-)
-
-TARGET_LINK_LIBRARIES (
-  test
-    allovolume_dataset
-    allovolume_renderer
-    allovolume_allosphere_calibration
-    ${GLFW_LIBRARIES}
-    ${OPENGL_LIBRARIES}
-    ${YAMLCPP_LIBRARIES}
 )
