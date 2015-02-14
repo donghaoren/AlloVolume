@@ -1,7 +1,7 @@
 AlloVolume
 ====
 
-Author: Donghao Ren, AlloSphere Research Group, Media Arts & Technology, UCSB.
+Author: Donghao Ren, Four Eyes Lab and AlloSphere Research Group, UCSB.
 
 AlloVolume is a CUDA-based application to support full-surround stereo volume rendering with interactive navigation for the UCSB Allosphere.
 It supports AMR (Adaptive Mesh Refinement) datasets.
