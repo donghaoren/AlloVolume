@@ -120,7 +120,6 @@ public:
                 msg.set_barrier_info(kRenderPresentBarrier);
                 zmq_protobuf_send(msg, socket_pubsub);
             }
-            printf("Render request sent.\n");
             needs_render = false;
         }
     }
@@ -565,7 +564,7 @@ public:
                 // We got a message from socket_commands.
                 protocol::ControllerRequest request;
                 zmq_protobuf_recv(request, socket_commands);
-                printf("%s\n", protocol::ControllerRequest_Type_Name(request.type()).c_str());
+                // printf("%s\n", protocol::ControllerRequest_Type_Name(request.type()).c_str());
                 // Send to the handlers.
                 protocol::ControllerResponse response;
                 std::map<protocol::ControllerRequest_Type, controller_handler_t>::iterator it =

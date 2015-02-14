@@ -126,7 +126,7 @@ public:
                 break;
             }
 
-            printf("Renderer: %s\n", protocol::RendererBroadcast_Type_Name(msg.type()).c_str());
+            // printf("Renderer: %s\n", protocol::RendererBroadcast_Type_Name(msg.type()).c_str());
 
             switch(msg.type()) {
                 case protocol::RendererBroadcast_Type_LoadVolume: {
@@ -286,7 +286,7 @@ public:
             char hostname[64] = { '\0' };
             gethostname(hostname, 63);
             sprintf(client_name, "%s:%d:%d", hostname, pid, thread_id);
-            printf("Renderer: %s\n", client_name);
+            printf("Renderer Initialize: %s\n", client_name);
         }
         if(display_enabled) {
             for(int i = 0; i < slave->num_projections; i++) {
