@@ -662,6 +662,25 @@ int main(int argc, char* argv[]) {
             req.mutable_pose()->set_qz(pose.rotation.v.z);
             zmq_protobuf_send(req, socket_cmdline);
 
+        } else if(args[0] == "lookat" && args.size() == 5) {
+            Vector eye = Vector(::atof(args[1].c_str()), ::atof(args[2].c_str()), ::atof(args[3].c_str()));
+
+            pose.position = eye;
+            pose.rotation = Quaternion::Rotation(-pose.position.normalize().cross(Vector(1, 0, 0)), -acos(-pose.position.normalize().dot(Vector(1, 0, 0))));
+
+
+            protocol::ControllerRequest req;
+            req.set_type(protocol::ControllerRequest_Type_SetPose);
+
+            req.mutable_pose()->set_x(pose.position.x);
+            req.mutable_pose()->set_y(pose.position.y);
+            req.mutable_pose()->set_z(pose.position.z);
+            req.mutable_pose()->set_qw(pose.rotation.w);
+            req.mutable_pose()->set_qx(pose.rotation.v.x);
+            req.mutable_pose()->set_qy(pose.rotation.v.y);
+            req.mutable_pose()->set_qz(pose.rotation.v.z);
+            zmq_protobuf_send(req, socket_cmdline);
+
         } else
         if(args[0] == "preset" && args.size() == 2) {
             protocol::ControllerRequest req;

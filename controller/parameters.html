@@ -28,6 +28,9 @@
                 <option value="3">3</option>
                 <option value="4">4</option>
                 <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
             </select>
         </div>
         <div class="slider"><span class="label">Blending Coefficient: </span><span id="slider-blending-coefficient"></span></div>
@@ -100,6 +103,7 @@
             if(event.type == "SetRendererParameters") {
                 sl_blending_coefficient.set(event.renderer_parameters.blending_coefficient);
                 d3.select("#sel-rendering-method").node().value = event.renderer_parameters.method;
+                d3.select("#sel-steps").node().value = Math.round(1.0 / event.renderer_parameters.step_size);
             }
 
             if(event.type == "SetLensParameters") {
@@ -136,6 +140,8 @@
                 var p = result[0];
                 sl_blending_coefficient.set(p.blending_coefficient);
                 d3.select("#sel-rendering-method").node().value = p.method;
+                d3.select("#sel-steps").node().value = Math.round(1.0 / p.step_size);
+                console.log(p);
             },
             onError: function(err) { console.log('allovolume.renderer.get_renderer_parameters: ' + err); }
         });

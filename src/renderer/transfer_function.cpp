@@ -238,7 +238,8 @@ void TransferFunction::ParseLayers(TransferFunction* target, size_t size, const 
             }
             for(int i = 0; i < size; i++) {
                 float t = ((float)i + 0.5f) / (float)size;
-                if(t < t0 || t > t1) continue;
+                if(t0 < t1 && (t < t0 || t > t1)) continue;
+                if(t0 > t1 && (t > t0 || t < t1)) continue;
                 float gradient_t = (t - t0) / (t1 - t0);
                 float alpha = pow(gradient_t , alpha_pow) * (alpha1 - alpha0) + alpha0;
                 Color c = sample_gradient(gradient, gradient_t);

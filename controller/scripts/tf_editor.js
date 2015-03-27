@@ -228,7 +228,8 @@ LayerTypes["gradient"] = {
         var alpha0 = layer.alpha0; if(alpha0 === undefined) alpha0 = 0.1;
         var alpha1 = layer.alpha1; if(alpha1 === undefined) alpha1 = 0.9;
         var alpha_pow = layer.alpha_pow; if(alpha_pow === undefined) alpha_pow = 1.0;
-        if(t < t0 || t > t1) return { r: 0, g: 0, b: 0, a: 0 };
+        if(t0 < t1 && (t < t0 || t > t1)) return { r: 0, g: 0, b: 0, a: 0 };
+        if(t0 > t1 && (t > t0 || t < t1)) return { r: 0, g: 0, b: 0, a: 0 };
         var c = sample_gradient(layer.gradient, (t - t0) / (t1 - t0));
         c.a = Math.pow((t - t0) / (t1 - t0), alpha_pow) * (alpha1 - alpha0) + alpha0;
         return c;
@@ -741,6 +742,26 @@ TransferFunctionEditor.prototype.render = function() {
     ctx.stroke();
 
     ctx.restore();
+};
+
+TransferFunctionEditor.prototype.generatePNG = function(width) {
+    var tf = this.tf;
+    var can = document.createElement("canvas");
+    can.width = width;
+    can.height = 20;
+    var ctx = can.getContext("2d");
+    var gradient = ctx.createLinearGradient(0, 0, width, 0);
+    for(var i = 0; i < width; i++) {
+        var t = i / (width - 1);
+        var c = tf.sample(t);
+        try {
+            gradient.addColorStop(t, rgba_color(c));
+        } catch(e) { }
+    }
+    ctx.fillStyle = gradient;
+    ctx.rect(0, 0, width, 20);
+    ctx.fill();
+    return can.toDataURL();
 };
 
 TransferFunctionEditor.prototype.did_edit = function() {
