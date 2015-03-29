@@ -8,6 +8,8 @@ It supports AMR (Adaptive Mesh Refinement) datasets.
 
 AlloVolume's components:
 
+![Architecture](https://github.com/donghaoren/AlloVolume/raw/master/documents/architecture.png)
+
 - CUDA-based AMR Ray-casting Volume Renderer.
     - KD-Tree for fast ray-block intersection.
     - Customizable lens.
