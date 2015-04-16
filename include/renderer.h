@@ -109,7 +109,8 @@ public:
     enum RaycastingMethod {
         kBasicBlendingMethod = 0,
         kRK4Method = 1,
-        kAdaptiveRKFMethod = 2
+        kAdaptiveRKFMethod = 2,
+        kPreintegrationMethod = 3
     };
 
     // Set volume.

@@ -116,6 +116,7 @@ inline int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector b
 
 texture<float, 3, cudaReadModeElementType> volume_texture;
 texture<float4, 1, cudaReadModeElementType> tf_texture;
+texture<float4, 2, cudaReadModeElementType> tf_texture_preintergrated;
 
 struct block_interpolate_t {
     const float* data;
@@ -207,6 +208,11 @@ inline Color tf_tex_get(float pos) {
     return Color(f4.x, f4.y, f4.z, f4.w);
 }
 
+__device__
+inline Color tf_tex_get2d(float px, float py) {
+    float4 f4 = tex2D(tf_texture_preintergrated, px, py);
+    return Color(f4.x, f4.y, f4.z, f4.w);
+}
 
 struct traverse_stack_t {
     int node;
@@ -386,6 +392,87 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
         color.g /= color.a;
         color.b /= color.a;
     } else color = Color(0, 0, 0, 0);
+
+    // Color output.
+    p.pixels[idx] = color;
+}
+
+__global__
+void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
+    // Pixel index.
+    int px = blockIdx.x * blockDim.x + threadIdx.x;
+    int py = blockIdx.y * blockDim.y + threadIdx.y;
+    if(px >= p.width || py >= p.height) return;
+    register int idx = py * p.width + px;
+
+    // Ray information.
+    Lens::Ray ray = p.rays[idx];
+    register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
+    register Vector d = p.pose.rotation.rotate(ray.direction);
+
+    // Initial color (background color).
+    register Color color = p.bg_color;
+
+    // Global ray information.
+    float g_kin, g_kout;
+    intersectBox(pos, d, p.bbox_min, p.bbox_max, &g_kin, &g_kout);
+    if(g_kout < 0) {
+        p.pixels[idx] = color;
+        return;
+    }
+    if(g_kin < 0) g_kin = 0;
+
+    // Block intersection.
+    ray_marching_kernel_blockinfo_t blockinfos[128];
+    traverse_stack_t stack[64];
+    int blockinfos_count = kd_tree_block_intersection(pos, d, g_kin, g_kout, g_kin, g_kout, p.kd_tree, p.kd_tree_root, p.blocks, blockinfos, stack);
+
+    // Simple solution: fixed step size.
+    float kmax = g_kout;
+    float L = p.blend_coefficient;
+
+
+
+    // Render blocks.
+    for(int cursor = 0; cursor < blockinfos_count; cursor++) {
+        BlockDescription block = p.blocks[blockinfos[cursor].index];
+        float kin = blockinfos[cursor].kin;
+        float kout = blockinfos[cursor].kout;
+        if(kout > kmax) kout = kmax;
+        if(kin < kout) {
+            // Render this block.
+            float step_size = L / 200.0;
+            float distance = kout - kin;
+            int steps = ceil(distance / step_size);
+
+            // Interpolate context.
+            block_interpolate_t block_access(block, p.data + block.offset);
+            float val_prev = block_access.interpolate(pos + d * (kin + step_size * ((float)steps + 0.5f)));
+            // Blending with basic alpha compositing.
+            for(int i = steps - 1; i >= 0; i--) {
+                float val = block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f)));
+                Color mn = tf_tex_get2d(val_prev, val);
+                color.a = color.a * mn.a + (1.0f - mn.a);
+                color.r = mn.a * (color.r + mn.r);
+                color.g = mn.a * (color.g + mn.g);
+                color.b = mn.a * (color.b + mn.b);
+                val_prev = val;
+            }
+            kmax = kin;
+        }
+    }
+
+    // Un-premultiply alpha channel.
+    if(color.a != 0) {
+        color.r /= color.a;
+        color.g /= color.a;
+        color.b /= color.a;
+    } else color = Color(0, 0, 0, 0);
+    //color.r = color.g = color.b = color.a;
+    //color.a = 1.0;
+
+    // color.r = color.g = color.b = tf_tex_get2d((float)px / p.width, (float)py / p.height).r * 1000;
+    // color.a = 1;
 
     // Color output.
     p.pixels[idx] = color;
@@ -707,7 +794,11 @@ public:
         // Proprocess the scale of the transfer function.
         preprocessVolume();
         // Upload the transfer function.
-        uploadTransferFunctionTexture();
+        if(raycasting_method == kPreintegrationMethod) {
+            uploadTransferFunctionPreintegrated();
+        } else {
+            uploadTransferFunctionTexture();
+        }
 
         // Render kernel parameters.
         ray_marching_parameters_t pms;
@@ -734,17 +825,27 @@ public:
         pms.pose = pose;
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
-        bindTransferFunctionTexture();
+
         if(raycasting_method == kBasicBlendingMethod) {
+            bindTransferFunctionTexture();
             ray_marching_kernel_basic<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+            unbindTransferFunctionTexture();
+        }
+        if(raycasting_method == kPreintegrationMethod) {
+            bindTransferFunctionTexture2D();
+            ray_marching_kernel_preintegration<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+            unbindTransferFunctionTexture2D();
         }
         if(raycasting_method == kRK4Method) {
+            bindTransferFunctionTexture();
             ray_marching_kernel_rk4<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+            unbindTransferFunctionTexture();
         }
         if(raycasting_method == kAdaptiveRKFMethod) {
+            bindTransferFunctionTexture();
             ray_marching_kernel_rkf_double<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+            unbindTransferFunctionTexture();
         }
-        unbindTransferFunctionTexture();
         cudaThreadSynchronize();
     }
 
@@ -800,6 +901,114 @@ public:
         tf_texture.addressMode[0] = cudaAddressModeClamp;
         tf_texture.addressMode[1] = cudaAddressModeClamp;
     }
+
+    void uploadTransferFunctionPreintegrated() {
+        cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
+        int size2d = tf->getSize() * tf->getSize();
+
+        if(tf_texture_data_size != size2d) {
+            if(tf_texture_data) {
+                cudaFreeArray(tf_texture_data);
+            }
+            cudaMallocArray(&tf_texture_data, &channel_desc, tf->getSize(), tf->getSize());
+            tf_texture_data_size = size2d;
+        }
+
+        Color* tf_color_preint = new Color[tf->getSize() * tf->getSize()];
+        Color* tf_color = tf->getContent();
+
+        float* csum_log_one_minus_alpha = new float[tf->getSize()];
+        float* log_alpha = new float[tf->getSize()];
+        float csum = 0;
+        for(int i = 0; i < tf->getSize(); i++) {
+            float v = log(1.0f - tf_color[i].a);
+            log_alpha[i] = v;
+            csum += v / 2.0;
+            csum_log_one_minus_alpha[i] = csum;
+            // for(int j = 0; j < tf->getSize(); j++) {
+            //     tf_color_preint[i * tf->getSize() + j].a = csum;
+            // }
+            csum += v / 2.0;
+        }
+
+        float* csum_r = new float[tf->getSize()];
+        float* csum_g = new float[tf->getSize()];
+        float* csum_b = new float[tf->getSize()];
+
+        tf_texture_preintergrated_steps = 200;
+        float sL = 1.0 * 200;
+
+        for(int v = 0; v < tf->getSize(); v++) {
+            int idx = v * tf->getSize() + v;
+            Color& c = tf_color_preint[idx];
+            float scaler = pow(1.0f - tf_color[v].a, -1.0f / sL) - 1.0f;
+            c.r = tf_color[v].r * scaler;
+            c.g = tf_color[v].g * scaler;
+            c.b = tf_color[v].b * scaler;
+            c.a = pow(1.0f - tf_color[v].a, 1.0f / sL);
+        }
+
+        for(int diff = 1; diff < tf->getSize(); diff++) {
+            float scaler = 1.0f / sL / diff;
+            // Prepare the accumulators.
+            float nrsum = 0;
+            float ngsum = 0;
+            float nbsum = 0;
+            for(int i = 0; i + diff < tf->getSize(); i++) {
+                float mul = exp(-scaler * csum_log_one_minus_alpha[i]);
+                float vr = log_alpha[i] * tf_color[i].r * mul;
+                float vg = log_alpha[i] * tf_color[i].g * mul;
+                float vb = log_alpha[i] * tf_color[i].b * mul;
+                nrsum += vr / 2.0f;
+                ngsum += vg / 2.0f;
+                nbsum += vb / 2.0f;
+                csum_r[i] = nrsum;
+                csum_g[i] = ngsum;
+                csum_b[i] = nbsum;
+                nrsum += vr / 2.0f;
+                ngsum += vg / 2.0f;
+                nbsum += vb / 2.0f;
+            }
+
+            for(int v0 = 0; v0 + diff < tf->getSize(); v0++) {
+                int v1 = v0 + diff;
+                Color c;
+                float mul = -scaler * exp(+csum_log_one_minus_alpha[v0] * scaler);
+                c.r = (csum_r[v1] - csum_r[v0]) * mul;
+                c.g = (csum_g[v1] - csum_g[v0]) * mul;
+                c.b = (csum_b[v1] - csum_b[v0]) * mul;
+                float alpha_sum = (csum_log_one_minus_alpha[v1] - csum_log_one_minus_alpha[v0]) / (v1 - v0);
+                c.a = exp(alpha_sum / sL);
+                tf_color_preint[v0 * tf->getSize() + v1] = c;
+                tf_color_preint[v1 * tf->getSize() + v0] = c;
+            }
+        }
+
+        cudaMemcpy2DToArray(tf_texture_data, 0, 0,
+            tf_color_preint,
+            sizeof(float4) * tf->getSize(),
+            sizeof(float4) * tf->getSize(),
+            tf->getSize(),
+            cudaMemcpyHostToDevice);
+
+        delete [] tf_color_preint;
+        delete [] csum_log_one_minus_alpha;
+        delete [] csum_r;
+        delete [] csum_g;
+        delete [] csum_b;
+
+        tf_texture_preintergrated.normalized = 1;
+        tf_texture_preintergrated.filterMode = cudaFilterModeLinear;
+        tf_texture_preintergrated.addressMode[0] = cudaAddressModeClamp;
+        tf_texture_preintergrated.addressMode[1] = cudaAddressModeClamp;
+    }
+    void bindTransferFunctionTexture2D() {
+        cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
+        cudaBindTextureToArray(tf_texture_preintergrated, tf_texture_data, channel_desc);
+    }
+    void unbindTransferFunctionTexture2D() {
+        cudaUnbindTexture(tf_texture_preintergrated);
+    }
     void bindTransferFunctionTexture() {
         cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
         cudaBindTextureToArray(tf_texture, tf_texture_data, channel_desc);
@@ -809,6 +1018,7 @@ public:
     }
     cudaArray* tf_texture_data;
     size_t tf_texture_data_size;
+    int tf_texture_preintergrated_steps;
 
     MirroredMemory<kd_tree_node_t> kd_tree;
     int kd_tree_root;

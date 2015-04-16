@@ -107,6 +107,11 @@ ADD_EXECUTABLE ( controller
     src/allosync.cpp
 )
 
+ADD_EXECUTABLE ( render_cli
+    src/render_cli.cpp
+    src/allovolume_protocol.pb.cc
+)
+
 TARGET_LINK_LIBRARIES (
   renderer
     allovolume_dataset
@@ -125,6 +130,16 @@ TARGET_LINK_LIBRARIES (
     allovolume_dataset
     readline
     ${ZeroMQ_LIBRARIES}
+    ${YAMLCPP_LIBRARIES}
+    ${Protobuf_LIBRARIES}
+    ${Boost_LIBRARIES}
+)
+
+TARGET_LINK_LIBRARIES (
+  render_cli
+    allovolume_renderer
+    allovolume_dataset
+    readline
     ${YAMLCPP_LIBRARIES}
     ${Protobuf_LIBRARIES}
     ${Boost_LIBRARIES}

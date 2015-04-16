@@ -5,8 +5,11 @@
 
 #include <stdio.h>
 #include <string>
+#include <fstream>
 #include <map>
 #include <yaml-cpp/yaml.h>
+
+#include "allovolume_protocol.pb.h"
 
 using namespace std;
 using namespace allovolume;
@@ -33,14 +36,16 @@ int main(int argc, char* argv[]) {
     Lens* lens = NULL;
     Image* img = NULL;
 
-    if(!parameters["volume"].IsNull()) {
+    if(parameters["volume"].IsDefined()) {
+        printf("Load Volume.\n");
         volume = VolumeBlocks::LoadFromFile(parameters["volume"].as<std::string>().c_str());
+        printf("Load Volume ok.\n");
     }
 
-    if(!parameters["hdf5"].IsNull()) {
+    if(parameters["volume_hdf5"].IsDefined()) {
         volume = Dataset_FLASH_Create(
-            parameters["hdf5"].as<std::string>().c_str(),
-            parameters["field"].as<std::string>().c_str()
+            parameters["volume_hdf5"].as<std::string>().c_str(),
+            parameters["volume_hdf5_field"].as<std::string>().c_str()
         );
     }
 
@@ -48,55 +53,74 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Error: Volume not loaded.\n");
         return -1;
     }
+    printf("Here!\n");
 
-    img = Image::Create(parameters["width"].IsNull() ? 800 : parameters["width"].as<int>(),
-                        parameters["height"].IsNull() ? 400 : parameters["height"].as<int>());
+    img = Image::Create(!parameters["width"].IsDefined() ? 800 : parameters["width"].as<int>(),
+                        !parameters["height"].IsDefined() ? 400 : parameters["height"].as<int>());
 
-    if(!parameters["equirectangular"].IsNull()) {
-        Vector origin = node2vector(parameters["equirectangular"]["origin"]);
-        Vector up = node2vector(parameters["equirectangular"]["up"]);
-        Vector direction = node2vector(parameters["equirectangular"]["direction"]);
-        lens = Lens::CreateEquirectangular(origin, up, direction);
+    protocol::ParameterPreset preset;
+
+    try {
+        std::fstream input(parameters["preset"].as<std::string>().c_str(), std::ios::in | std::ios::binary);
+        preset.ParseFromIstream(&input);
+    } catch(...) {
+        fprintf(stderr, "Error: Preset not found.\n");
+        return -1;
     }
+
+    printf("Here!\n");
+
+    lens = Lens::CreatePerspective(90.0);
 
     VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
+    renderer->setBackgroundColor(Color(0, 0, 0, 1));
 
-    tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, 20, true);
-    tf->getMetadata()->blend_coefficient = 1e10;
+    printf("Here!\n");
+    Pose pose;
+    pose.position = Vector(preset.pose().x(), preset.pose().y(), preset.pose().z());
+    pose.rotation = Quaternion(preset.pose().qw(), preset.pose().qx(), preset.pose().qy(), preset.pose().qz());
+    renderer->setPose(pose);
 
+    lens->setEyeSeparation(preset.lens_parameters().eye_separation());
+    lens->setFocalDistance(preset.lens_parameters().focal_distance());
 
-    int image_size = 1600 * 800;
-    img = Image::Create(1600, 1600);
-    Image* img_render = Image::Create(1600, 800);
-
+    renderer->setBlendingCoefficient(preset.renderer_parameters().blending_coefficient());
+    renderer->setStepSizeMultiplier(preset.renderer_parameters().step_size());
+    switch(preset.renderer_parameters().method()) {
+        case protocol::RendererParameters_RenderingMethod_BasicBlending: {
+            renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
+        } break;
+        case protocol::RendererParameters_RenderingMethod_RK4: {
+            renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
+        } break;
+        case protocol::RendererParameters_RenderingMethod_AdaptiveRKF: {
+            renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
+        } break;
+    }
+    renderer->setRaycastingMethod(VolumeRenderer::kPreintegrationMethod);
+    printf("createTransferFunction.\n");
+    tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16);
+    tf->setDomain(preset.transfer_function().domain_min(), preset.transfer_function().domain_max());
+    switch(preset.transfer_function().scale()) {
+        case protocol::TransferFunction_Scale_Linear: {
+            tf->setScale(TransferFunction::kLinearScale);
+        } break;
+        case protocol::TransferFunction_Scale_Log: {
+            tf->setScale(TransferFunction::kLogScale);
+        } break;
+    }
+    TransferFunction::ParseLayers(tf, preset.transfer_function().size(), preset.transfer_function().layers().c_str());
+    printf("setVoluem()\n");
     renderer->setVolume(volume);
-    renderer->setLens(lens1);
+    printf("setLens()\n");
+    renderer->setLens(lens);
+    printf("setTransferFunction()\n");
     renderer->setTransferFunction(tf);
-    renderer->setImage(img_render);
+    printf("setImage()\n");
+    renderer->setImage(img);
+    printf("render()\n");
     renderer->render();
-    img_render->setNeedsDownload();
-    Color* pixels = img_render->getPixels();
-    for(int i = 0; i < image_size; i++) {
-        pixels[i].r = transform_color(pixels[i].r);
-        pixels[i].g = transform_color(pixels[i].g);
-        pixels[i].b = transform_color(pixels[i].b);
-        pixels[i].a = 1;
-    }
-    memcpy(img->getPixels(), pixels, sizeof(Color) * image_size);
-
-    renderer->setLens(lens2);
-    renderer->setTransferFunction(tf);
-    renderer->setImage(img_render);
-    renderer->render();
-    img_render->setNeedsDownload();
-    pixels = img_render->getPixels();
-    for(int i = 0; i < image_size; i++) {
-        pixels[i].r = transform_color(pixels[i].r);
-        pixels[i].g = transform_color(pixels[i].g);
-        pixels[i].b = transform_color(pixels[i].b);
-        pixels[i].a = 1;
-    }
-    memcpy(img->getPixels() + image_size, pixels, sizeof(Color) * image_size);
-
-    img->save(argv[2], "png16");
+    img->setNeedsDownload();
+    printf("Saving image.\n");
+    img->save(parameters["output"].as<std::string>().c_str(), "png16");
 }

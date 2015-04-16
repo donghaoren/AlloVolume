@@ -1,0 +1,205 @@
+\documentclass[letter, 11pt]{article}
+
+\newcommand{\mtitle}{The Mathematics of AlloVolume}
+\newcommand{\mauthor}{Donghao Ren}
+
+\usepackage[top=1.5in, bottom=1.5in, left=1in, right=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\setlength{\headheight}{15.2pt}
+\pagestyle{fancy}
+\fancyhead{}
+\fancyfoot{}
+\fancyhead[L]{\mtitle}
+\fancyhead[R]{\mauthor}
+\fancyfoot[C]{\thepage}
+
+% \usepackage{fourier} % math & rm
+% \usepackage[scaled=0.875]{helvet} % ss
+% \renewcommand{\ttdefault}{lmtt} %tt
+
+\begin{document}
+
+\thispagestyle{fancy}
+
+\centerline{\Large\textbf{\mtitle}}
+\vspace{0.1in}
+\centerline{\large{\mauthor}}
+
+\setlength{\parindent}{0cm}
+
+\section{Differential Blending}
+
+Here we derive the formulas for differential blending in AlloVolume.
+
+\subsection{Alpha Blending Equations}
+
+Here is the alpha blending equation taken from Wikipedia:
+\begin{equation*}
+\begin{cases}
+\mathrm{out}_{\mathrm{A}} = \mathrm{src}_{\mathrm{A}} + \mathrm{dst}_{\mathrm{A}} (1 - \mathrm{src}_{\mathrm{A}}) \\
+\mathrm{out}_{\mathrm{RGB}} = \bigl( \mathrm{src}_{\mathrm{RGB}} \mathrm{src}_{\mathrm{A}} + \mathrm{dst}_{\mathrm{RGB}} \mathrm{dst}_{\mathrm{A}} \left( 1 - \mathrm{src}_{\mathrm{A}} \right) \bigr) \div \mathrm{out}_{\mathrm{A}} \\
+\mathrm{out}_{\mathrm{A}} = 0 \Rightarrow \mathrm{out}_{\mathrm{RGB}} = 0
+\end{cases}
+\end{equation*}
+
+With premultiplied alpha $ \mathrm{out}_{\mathrm{PMRGB}} = \mathrm{out}_{\mathrm{RGB}} \times \mathrm{out}_{\mathrm{A}} $, we have:
+\begin{equation*}
+\begin{cases}
+\mathrm{out}_{\mathrm{A}} = \mathrm{src}_{\mathrm{A}} + \mathrm{dst}_{\mathrm{A}} (1 - \mathrm{src}_{\mathrm{A}}) \\
+\mathrm{out}_{\mathrm{PMRGB}} = \mathrm{src}_{\mathrm{PMRGB}} + \mathrm{dst}_{\mathrm{PMRGB}} \left( 1 - \mathrm{src}_{\mathrm{A}} \right)
+\end{cases}
+\end{equation*}
+
+The color of each pixel in volume rendering is given by a sequence of blending along a ray $\vec{p}(t) = \vec{s} + t \vec{d}$.
+Take the voxel values $V(\vec{p}(t))$ at the time steps $t$ from the end of the ray to the start,
+apply the transfer function $T(V(\vec{p}(t)))$ to get the RGBA values, and then blend them together.
+To do this, we can adjust the alpha for the transfer function according to the step size,
+or use the differential version as described below.
+
+From the blending formula with premultiplied alpha, we can derive the differential version:
+\begin{align*}
+\alpha(t, \alpha_0) &= 1 - (1 - A) ^ {\tfrac{t}{L}} + (1 - A) ^ {\tfrac{t}{L}} \alpha_0 \\
+c(t, c_0) &= \bigl(1 - (1 - A) ^ {\tfrac{t}{L}}\bigr) \frac{\mathrm{PMRGB}}{\mathrm{A}} + (1 - A) ^ {\tfrac{t}{L}} c_0
+\end{align*}
+
+\newcommand{\A}{\mathrm{A}}
+\newcommand{\RGB}{\mathrm{RGB}}
+\newcommand{\dd}{\mathrm{d}}
+
+Take the derive at $t = 0$, we have the differential equations:
+\begin{align}
+\alpha'(t) &= \frac{\bigl(\alpha(t)-1\bigr)\ln\bigl(1-\A(t)\bigr)}{L} \\
+c'(t) &= \frac{\bigl(c(t)-\RGB(t)\bigr)\ln\bigl(1-\A(t)\bigr)}{L}
+\end{align}
+
+\subsection{The Pre-Integration Technique}
+
+Pre-integration can help reduce artifacts in the rendering results.
+
+Let's assume we are wokring on a segment of the ray, we have volume values $v_0$ and $v_1$,
+transfer functions $T_\RGB$, $T_\alpha$, initial color $c_0$ and alpha $\alpha_0$, blending length $s$.
+
+The differential function is now:
+\begin{align*}
+\alpha'(t) &= \frac{\bigl(\alpha(t)-1\bigr)\ln\bigl(1-T_\alpha((1-\frac{t}{s})v_0+\frac{t}{s}v_1)\bigr)}{L} \\
+c'(t) &= \frac{\bigl(c(t)-T_\RGB((1-\frac{t}{s})v_0+\frac{t}{s}v_1)\bigr)\ln\bigl(1-T_\alpha((1-\frac{t}{s})v_0+\frac{t}{s}v_1)\bigr)}{L} \\
+\alpha(0) &= \alpha_0 \,,\; c(0) = c_0
+\end{align*}
+
+We want to find $\alpha(s)$ and $c(s)$. Now we substitute $t$ by $ts$:
+\begin{align*}
+\alpha_1(t) &= \alpha(ts) \,,\; c_1(t) = c(ts)\\
+\alpha_1'(t) &= s\alpha'(ts) \,,\; c_1'(t) = s c'(ts)\\
+\alpha_1'(t) &= s\frac{\bigl(\alpha_1(t)-1\bigr)\ln\bigl(1-T_\alpha((1-t)v_0+tv_1)\bigr)}{L} \\
+c_1'(t) &= s\frac{\bigl(c_1(t)-T_\RGB((1-t)v_0+tv_1)\bigr)\ln\bigl(1-T_\alpha((1-t)v_0+tv_1)\bigr)}{L} \\
+\alpha_1(0) &= \alpha_0 \,,\; c_1(0) = c_0
+\end{align*}
+
+From now on, $\alpha, c$ mean $\alpha_1, c_1$, so we want to get $\alpha(1)$ and $c(1)$.
+
+To make things shorter, we define:
+\begin{align*}
+T_\alpha(v_0, v_1, t) &= T_\alpha\bigl((1-t)v_0+t v_1\bigr) \\
+T_\RGB(v_0, v_1, t) &= T_\RGB\bigl((1-t)v_0+t v_1\bigr)
+\end{align*}
+
+Rewrite the equations:
+\begin{align*}
+\alpha'(t) - \frac{s}{L} \ln\bigl(1-T_\alpha(v_0, v_1, t)\bigr) \alpha(t) &= -\frac{s}{L} \ln\bigl(1-T_\alpha(v_0, v_1, t)\bigr) \\
+c'(t) - \frac{s}{L} \ln\bigl(1-T_\alpha(v_0, v_1, t)\bigr) c(t) &= -\frac{s}{L} T_\RGB(v_0, v_1, t) \ln\bigl(1-T_\alpha(v_0, v_1, t)\bigr)
+\end{align*}
+
+The differential blending equations is a first-order, linear, inhomogeneous, ODE with function coefficients, which can be written as:
+\begin{equation*}
+\frac{\dd y}{\dd x} + P(x)y = Q(x)
+\end{equation*}
+
+The solution is given by:
+\begin{align*}
+\alpha(1) &= e^{\frac{s}{L}\int_0^1  \ln\bigl(1-T_\alpha(v_0, v_1, \lambda)\bigr) \, \dd\lambda}\left[-\frac{s}{L}\int_0^1 e^{-\int_0^\lambda \frac{s}{L} \ln\bigl(1-T_\alpha(v_0, v_1, \epsilon)\bigr) \, \dd\epsilon} \ln\bigl(1-T_\alpha(v_0, v_1, \lambda)\bigr) \, {\dd\lambda} +\alpha_0 \right] \\
+c(1) &= e^{\frac{s}{L}\int_0^1  \ln\bigl(1-T_\alpha(v_0, v_1, \lambda)\bigr) \, \dd\lambda}\left[-\frac{s}{L}\int_0^1 e^{-\int_0^\lambda \frac{s}{L} \ln\bigl(1-T_\alpha(v_0, v_1, \epsilon)\bigr) \, \dd\epsilon} T_\RGB(v_0, v_1, t) \ln\bigl(1-T_\alpha(v_0, v_1, \lambda)\bigr) \, {\dd\lambda} + c_0 \right]
+\end{align*}
+
+For simplicity, we define:
+\begin{align}
+M_\alpha(v_0, v_1, s) &= e^{\frac{s}{L}\int_0^1  \ln\bigl(1-T_\alpha(v_0, v_1, \lambda)\bigr) \, \dd\lambda} \\
+M_\RGB(v_0, v_1, s) &= -\frac{s}{L}\int_0^1 e^{-\int_0^\lambda \frac{s}{L} \ln\bigl(1-T_\alpha(v_0, v_1, \epsilon)\bigr) \, \dd\epsilon} T_\RGB(v_0, v_1, t) \ln\bigl(1-T_\alpha(v_0, v_1, \lambda)\bigr) \, {\dd\lambda}
+\end{align}
+
+The solution becomes:
+\begin{align}
+\alpha(1) &= M_\alpha(v_0, v_1, s) \alpha_0 + \bigl(1 - M_\alpha(v_0, v_1, s)\bigr) \alpha_0 \label{eq:malpha2eliminate} \\
+c(1) &= M_\alpha(v_0, v_1, s) \big(M_\RGB(v_0, v_1, s) + c_0\big)
+\end{align}
+
+\autoref{eq:malpha2eliminate} holds because $\alpha_0 = 1 \Rightarrow \alpha(1) = 1$. therefore the second integral can be removed.
+
+To pre-integrate, we only need to compute $M_\alpha(v_0, v_1, s)$ and $M_\RGB(v_0, v_1, s)$ from the transfer function.
+$M_\alpha(v_0, v_1, s)$ can be written as the following:
+\begin{align}
+M_\alpha(v_0, v_1, s) &= e^{\frac{s}{L}\frac{1}{v_1-v_0}\int_{v_0}^{v_1} \ln\bigl(1-T_\alpha(t)\bigr) \, \dd t} \\
+M_\alpha(v_0, v_1) &= e^{\frac{1}{v_1-v_0}\int_{v_0}^{v_1} \ln\bigl(1-T_\alpha(t)\bigr) \, \dd t} \\
+M_\alpha(v_0, v_1, s) &= M_\alpha(v_0, v_1)^{\tfrac{s}{L}}
+\end{align}
+
+Therefore we only have to compute $M_\alpha(v_0, v_1)$, which is independent of $s$ and $L$.
+$M_\RGB(v_0, v_1, s)$ can be written as the following:
+\begin{align}
+\mathrm{Let} & \,\, Y(v) = \int_0^t\ln(1 - T_\alpha(v)) \, \dd t \\
+\mathrm{Then} & \,\, \int_0^\lambda \ln\bigl(1-T_\alpha(v_0, v_1, \epsilon)\bigr) \, \dd\epsilon = \frac{Y(v_0 + \lambda (v_1 - v_0)) - Y(v_0)}{v_1 - v_0} \\
+M_\RGB(v_0, v_1, s) &= -\frac{s}{L}\frac{1}{v_1-v_0}\int_{v_0}^{v_1} e^{-\frac{s}{L}\frac{Y(t)-Y(v_0)}{v_1 - v_0}} T_\RGB(t) \ln\bigl(1-T_\alpha(t)\bigr) \, {\dd t} \\
+  &= -\frac{s}{L}\frac{1}{v_1-v_0}e^{\frac{s}{L}\frac{Y(v_0)}{v_1 - v_0}}\int_{v_0}^{v_1} e^{-\frac{s}{L}\frac{Y(t)}{v_1 - v_0}} T_\RGB(t) \ln\bigl(1-T_\alpha(t)\bigr) \, {\dd t} \\
+\end{align}
+
+To furture reduce it, let:
+\begin{equation*}
+p = \frac{s}{L}\frac{1}{v_1 - v_0}
+\end{equation*}
+
+We then have:
+\begin{equation*}
+M_\RGB(v_0, v_1, s) = -p e^{p Y(v_0)} \int_{v_0}^{v_1}{ e^{-p Y(t)} }T_\RGB(t) \ln\bigl(1-T_\alpha(t)\bigr) \, {\dd t}
+\end{equation*}
+
+Let:
+\begin{equation*}
+Z(v, p) = \int_{0}^{v}{ e^{-p Y(t)} }T_\RGB(t) \ln\bigl(1-T_\alpha(t)\bigr) \, {\dd t}
+\end{equation*}
+
+We have:
+\begin{equation*}
+M_\RGB(v_0, v_1, s) = -p e^{p Y(v_0)} \big(Z(v_1, p) - Z(v_0, p)\big)
+\end{equation*}
+
+Now the only thing we need in order to compute $M_\RGB(v_0, v_1, s)$ is $Y(v)$ and $Z(v, p)$.
+
+Also, $M_\alpha(v_0, v_1, s)$ is given by:
+\begin{equation*}
+M_\alpha(v_0, v_1, s) = e^{p \big(Y(v_1)-Y(v_0)\big)}
+\end{equation*}
+
+Putting it altogether, first we compute $Y(v)$ and $Z(v, p)$:
+\begin{align*}
+Y(v) &= \int_0^v\ln(1 - T_\alpha(t)) \, \dd t \\
+Z(v, p) &= \int_{0}^{v}{ e^{-p Y(t)} }T_\RGB(t) \ln\bigl(1-T_\alpha(t)\bigr) \, {\dd t}
+\end{align*}
+
+Then we have:
+\begin{align*}
+M_\alpha(v_0, v_1, s) &= e^{p \big(Y(v_1)-Y(v_0)\big)} \\
+M_\RGB(v_0, v_1, s) &= -p e^{p Y(v_0)} \big(Z(v_1, p) - Z(v_0, p)\big)
+\end{align*}
+
+The blending equation is:
+\begin{align*}
+\alpha_{v_1} &= M_\alpha(v_0, v_1, s) \alpha_{v_0} + \bigl(1 - M_\alpha(v_0, v_1, s)\bigr) \alpha_{v_0} \label{eq:malpha2eliminate} \\
+c_{v_1} &= M_\alpha(v_0, v_1, s) \big(M_\RGB(v_0, v_1, s) + c_{v_0}\big)
+\end{align*}
+
+
+
+\end{document}
+
