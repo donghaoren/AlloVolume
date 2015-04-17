@@ -36,6 +36,12 @@ namespace allovolume {
         T* cpu;
         T* gpu;
         size_t size, capacity;
+        MirroredMemory() {
+            size = 0;
+            capacity = 0;
+            cpu = NULL;
+            gpu = NULL;
+        }
         MirroredMemory(int size_) {
             size = size_;
             capacity = size_;
@@ -47,8 +53,8 @@ namespace allovolume {
         void reserve(int count) {
             if(capacity < count) {
                 capacity = count;
-                delete [] cpu;
-                cudaDeallocate<T>(gpu);
+                if(cpu) delete [] cpu;
+                if(gpu) cudaDeallocate<T>(gpu);
                 cpu = new T[capacity];
                 gpu = cudaAllocate<T>(capacity);
             }
@@ -67,8 +73,8 @@ namespace allovolume {
             cudaDownload(cpu, gpu, size);
         }
         ~MirroredMemory() {
-            delete [] cpu;
-            cudaDeallocate<T>(gpu);
+            if(cpu) delete [] cpu;
+            if(gpu) cudaDeallocate<T>(gpu);
         }
     };
 }
