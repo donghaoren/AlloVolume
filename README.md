@@ -13,6 +13,7 @@ AlloVolume's components:
 - CUDA-based AMR Ray-casting Volume Renderer.
     - KD-Tree for fast ray-block intersection.
     - Customizable lens.
+    - Pre-integration rendering method to produce high quality images fast.
     - High definintion rendering using adaptive Runge-Kutta-Fehlberg method.
 
 - HTML5-based Parameter Editor.
