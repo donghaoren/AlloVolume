@@ -96,8 +96,11 @@ int main(int argc, char* argv[]) {
         case protocol::RendererParameters_RenderingMethod_AdaptiveRKF: {
             renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
         } break;
+        case protocol::RendererParameters_RenderingMethod_PreIntegration: {
+            renderer->setRaycastingMethod(VolumeRenderer::kPreIntegrationMethod);
+        } break;
     }
-    renderer->setRaycastingMethod(VolumeRenderer::kPreintegrationMethod);
+    renderer->setRaycastingMethod(VolumeRenderer::kPreIntegrationMethod);
     printf("createTransferFunction.\n");
     tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16);
     tf->setDomain(preset.transfer_function().domain_min(), preset.transfer_function().domain_max());
@@ -119,6 +122,8 @@ int main(int argc, char* argv[]) {
     printf("setImage()\n");
     renderer->setImage(img);
     printf("render()\n");
+    renderer->render();
+    renderer->render();
     renderer->render();
     img->setNeedsDownload();
     printf("Saving image.\n");

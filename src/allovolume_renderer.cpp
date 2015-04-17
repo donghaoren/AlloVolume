@@ -168,6 +168,9 @@ public:
                         case protocol::RendererParameters_RenderingMethod_AdaptiveRKF: {
                             renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
                         } break;
+                        case protocol::RendererParameters_RenderingMethod_PreIntegration: {
+                            renderer->setRaycastingMethod(VolumeRenderer::kPreIntegrationMethod);
+                        } break;
                     }
                 } break;
                 case protocol::RendererBroadcast_Type_SetTransferFunction: {

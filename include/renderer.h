@@ -110,7 +110,7 @@ public:
         kBasicBlendingMethod = 0,
         kRK4Method = 1,
         kAdaptiveRKFMethod = 2,
-        kPreintegrationMethod = 3
+        kPreIntegrationMethod = 3
     };
 
     // Set volume.
