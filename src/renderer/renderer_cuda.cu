@@ -10,19 +10,13 @@
 
 #include <sys/time.h>
 
+#include "../timeprofiler.h"
+
 #define PREINT_MAX_P 100
 
 using namespace std;
 
 namespace allovolume {
-
-double getPreciseTime() {
-    timeval t;
-    gettimeofday(&t, 0);
-    double s = t.tv_sec;
-    s += t.tv_usec / 1000000.0;
-    return s;
-}
 
 __device__
 inline float interp(float a, float b, float t) {
@@ -89,6 +83,8 @@ struct ray_marching_parameters_t {
 
     const kd_tree_node_t* kd_tree;
     int kd_tree_root;
+
+    int tf_size;
 
     Pose pose;
 };
@@ -443,6 +439,8 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     float kmax = g_kout;
     float L = p.blend_coefficient;
 
+    float tf_size = p.tf_size;
+
     // Render blocks.
     for(int cursor = 0; cursor < blockinfos_count; cursor++) {
         BlockDescription block = p.blocks[blockinfos[cursor].index];
@@ -458,35 +456,37 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
             if(steps <= 2) steps = 2;
             float step_size = distance / steps;
 
+            // Blending with the pre-integrated lookup texture.
+            // See "documents/allovolume-math.pdf" to see how we derived this.
+            // Note that the formulas used in the code is a little bit more refined version,
+            // They are essentially the same, although some terms are moved around for efficiency.
+            // (We want to reduce the number of arithmetic operations in the rendering code).
+
+            // The scaling factor of p.
             float pts_c = (step_size / L) / PREINT_MAX_P;
-            float mindiff = fmaxf(1e-4, pts_c);
+            // The minimum v0, v1 difference our pre-integration texture can tolerate.
+            float mindiff = fmaxf(3.0 / tf_size, pts_c);
 
             // Interpolate context.
             block_interpolate_t block_access(block, p.data + block.offset);
             float val_prev = block_access.interpolate(pos + d * (kin + step_size * (float)steps));
-            // Blending with basic alpha compositing.
             for(int i = steps - 1; i >= 0; i--) {
+                // Access the volume.
                 float val_this = block_access.interpolate(pos + d * (kin + step_size * (float)i));
-                float val0 = fminf(val_this, val_prev);
-                float val1 = fmaxf(val_this, val_prev);
-                if(val1 - val0 < mindiff) {
-                    float middle = (val1 + val0) / 2.0f;
-                    val1 = middle + mindiff / 2.0f;
-                    val0 = middle - mindiff / 2.0f;
-                }
+                // Make sure val0 < val1 and val1 - val0 >= mindiff.
+                float middle = (val_this + val_prev) / 2.0f;
+                float diff = fmaxf(mindiff, fabs(val_this - val_prev)) / 2.0f;
+                float val0 = middle - diff;
+                float val1 = middle + diff;
+                // Lookup the pre-integration table.
                 float pts = pts_c / (val1 - val0);
                 Color data0 = tf_tex_get2d(pts, val0);
                 Color data1 = tf_tex_get2d(pts, val1);
-                float scaler0 = data0.a;
-                float scaler1 = data1.a;
-                float Ma = scaler1 / scaler0;
-                float Mr = scaler1 * (data1.r - data0.r);
-                float Mg = scaler1 * (data1.g - data0.g);
-                float Mb = scaler1 * (data1.b - data0.b);
-                color.a = fmaf(color.a, Ma, 1.0f - Ma);
-                color.r = fmaf(Ma, color.r, Mr);
-                color.g = fmaf(Ma, color.g, Mg);
-                color.b = fmaf(Ma, color.b, Mb);
+                // Update the color.
+                color.a = fmaf(data0.a, color.a, data1.a - data0.a) / data1.a;
+                color.r = fmaf(data0.a, color.r, data1.r - data0.r) / data1.a;
+                color.g = fmaf(data0.a, color.g, data1.g - data0.g) / data1.a;
+                color.b = fmaf(data0.a, color.b, data1.b - data0.b) / data1.a;
                 val_prev = val_this;
             }
             kmax = kin;
@@ -688,7 +688,6 @@ void tf_preint_kernel(Color* table, Color* tf, float* Y, int size) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if(i >= size) return;
     float rsum = 0, gsum = 0, bsum = 0;
-    float log_sl_max = log(1.0f + 100.0f / 0.002f);
     float p = (i + 0.5) / size * PREINT_MAX_P;
     for(int j = 0; j < size; j++) {
         int idx = j * size + i;
@@ -704,7 +703,7 @@ void tf_preint_kernel(Color* table, Color* tf, float* Y, int size) {
         table[idx].r = rsum;
         table[idx].g = gsum;
         table[idx].b = bsum;
-        table[idx].a = exp(Y_j * p);
+        table[idx].a = exp(-Y_j * p);
         rsum += dr;
         gsum += dg;
         bsum += db;
@@ -725,6 +724,7 @@ public:
     {
         tf_texture_data = NULL;
         tf_texture_data_size = 0;
+        tf_preint_preprocessed = false;
         floatChannelDesc = cudaCreateChannelDesc<float>();
     }
 
@@ -773,8 +773,15 @@ public:
         preprocess_data_kernel<<<diviur(data.size, 64), 64>>>(data.gpu, data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
     }
 
+    bool tf_preint_preprocessed;
+
     virtual void setTransferFunction(TransferFunction* tf_) {
         tf = tf_;
+        tf_preint_preprocessed = false;
+        if(raycasting_method == kPreIntegrationMethod) {
+            uploadTransferFunctionPreintegratedGPU();
+            tf_preint_preprocessed = true;
+        }
     }
 
     virtual void setLens(Lens* lens_) {
@@ -829,23 +836,34 @@ public:
     }
 
     virtual void render(int x0, int y0, int total_width, int total_height) {
+        TimeMeasure time_profiler("GPURender");
         // Prepare image.
         int pixel_count = image->getWidth() * image->getHeight();
         rays.allocate(pixel_count);
 
         // Generate rays.
+        time_profiler.begin("GenerateRays");
+
         Lens::Viewport vp;
         vp.width = total_width;
         vp.height = total_height;
         vp.vp_x = x0; vp.vp_y = y0;
         vp.vp_width = image->getWidth(); vp.vp_height = image->getHeight();
         lens->getRaysGPU(vp, rays.gpu);
+        cudaThreadSynchronize();
 
+        time_profiler.next("PreprocessVolume");
         // Proprocess the scale of the transfer function.
         preprocessVolume();
+        cudaThreadSynchronize();
+
+        time_profiler.next("PreprocessTransferFunction");
         // Upload the transfer function.
         if(raycasting_method == kPreIntegrationMethod) {
-            uploadTransferFunctionPreintegratedGPU();
+            if(!tf_preint_preprocessed) {
+                uploadTransferFunctionPreintegratedGPU();
+                tf_preint_preprocessed = true;
+            }
         } else {
             uploadTransferFunctionTexture();
         }
@@ -873,11 +891,15 @@ public:
         pms.bg_color = bg_color;
         // Block range.
         pms.pose = pose;
+
+        pms.tf_size = tf->getSize();
+
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
 
         cudaThreadSynchronize();
-        double t0 = getPreciseTime();
+
+        time_profiler.next("Render");
         if(raycasting_method == kBasicBlendingMethod) {
             bindTransferFunctionTexture();
             ray_marching_kernel_basic<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
@@ -899,8 +921,7 @@ public:
             unbindTransferFunctionTexture();
         }
         cudaThreadSynchronize();
-        double t1 = getPreciseTime();
-        printf("Render kernel: %lf ms\n", (t1 - t0) * 1000.0);
+        time_profiler.done();
     }
 
     // Memory regions:
@@ -960,7 +981,6 @@ public:
     MirroredMemory<Color> preint_tf, preint_table;
 
     void uploadTransferFunctionPreintegratedGPU() {
-        double t0 = getPreciseTime();
         cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
         int size = tf->getSize();
         int size2d = size * size;
@@ -969,7 +989,18 @@ public:
             if(tf_texture_data) {
                 cudaFreeArray(tf_texture_data);
             }
-            cudaMallocArray(&tf_texture_data, &channel_desc, size, size);
+            tf_texture_data = NULL;
+            cudaError_t err = cudaMallocArray(&tf_texture_data, &channel_desc, size, size);
+            if(!tf_texture_data) {
+                int size_bytes = size * size * sizeof(Color);
+                fprintf(stderr, "cudaAllocate: cudaMalloc() of %llu (%.2f MB): %s\n",
+                    size_bytes, size_bytes / 1048576.0,
+                    cudaGetErrorString(err));
+                size_t memory_free, memory_total;
+                cudaMemGetInfo(&memory_free, &memory_total);
+                fprintf(stderr, "  Free: %.2f MB, Total: %.2f MB\n", (float)memory_free / 1048576.0, (float)memory_total / 1048576.0);
+                throw bad_alloc();
+            }
             tf_texture_data_size = size2d;
         }
 
@@ -1007,8 +1038,6 @@ public:
         tf_texture_preintergrated.filterMode = cudaFilterModeLinear;
         tf_texture_preintergrated.addressMode[0] = cudaAddressModeClamp;
         tf_texture_preintergrated.addressMode[1] = cudaAddressModeClamp;
-        double t1 = getPreciseTime();
-        printf("uploadTransferFunctionPreintegratedGPU: %lf ms\n", (t1 - t0) * 1000.0);
     }
 
     void bindTransferFunctionTexture2D() {

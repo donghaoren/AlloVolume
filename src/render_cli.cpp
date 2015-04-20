@@ -11,6 +11,8 @@
 
 #include "allovolume_protocol.pb.h"
 
+#include "timeprofiler.h"
+
 using namespace std;
 using namespace allovolume;
 
@@ -24,6 +26,9 @@ Vector node2vector(const YAML::Node& node) {
 }
 
 int main(int argc, char* argv[]) {
+
+    TimeMeasure time_measure("Main");
+
     YAML::Node parameters;
     if(argc >= 2) {
         parameters = YAML::LoadFile(argv[1]);
@@ -37,9 +42,7 @@ int main(int argc, char* argv[]) {
     Image* img = NULL;
 
     if(parameters["volume"].IsDefined()) {
-        printf("Load Volume.\n");
         volume = VolumeBlocks::LoadFromFile(parameters["volume"].as<std::string>().c_str());
-        printf("Load Volume ok.\n");
     }
 
     if(parameters["volume_hdf5"].IsDefined()) {
@@ -53,7 +56,6 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Error: Volume not loaded.\n");
         return -1;
     }
-    printf("Here!\n");
 
     img = Image::Create(!parameters["width"].IsDefined() ? 800 : parameters["width"].as<int>(),
                         !parameters["height"].IsDefined() ? 400 : parameters["height"].as<int>());
@@ -68,14 +70,12 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    printf("Here!\n");
 
     lens = Lens::CreatePerspective(90.0);
 
     VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
     renderer->setBackgroundColor(Color(0, 0, 0, 1));
 
-    printf("Here!\n");
     Pose pose;
     pose.position = Vector(preset.pose().x(), preset.pose().y(), preset.pose().z());
     pose.rotation = Quaternion(preset.pose().qw(), preset.pose().qx(), preset.pose().qy(), preset.pose().qz());
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
         } break;
     }
     renderer->setRaycastingMethod(VolumeRenderer::kPreIntegrationMethod);
-    printf("createTransferFunction.\n");
+
     tf = TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16);
     tf->setDomain(preset.transfer_function().domain_min(), preset.transfer_function().domain_max());
     switch(preset.transfer_function().scale()) {
@@ -112,19 +112,20 @@ int main(int argc, char* argv[]) {
             tf->setScale(TransferFunction::kLogScale);
         } break;
     }
-    TransferFunction::ParseLayers(tf, preset.transfer_function().size(), preset.transfer_function().layers().c_str());
-    printf("setVoluem()\n");
+    TransferFunction::ParseLayers(tf, 1024, preset.transfer_function().layers().c_str());
+
     renderer->setVolume(volume);
-    printf("setLens()\n");
     renderer->setLens(lens);
-    printf("setTransferFunction()\n");
     renderer->setTransferFunction(tf);
-    printf("setImage()\n");
     renderer->setImage(img);
-    printf("render()\n");
-    renderer->render();
-    renderer->render();
-    renderer->render();
+    int trails = 1;
+    double ts = 0;
+    for(int i = 0; i < trails; i++) {
+        time_measure.begin("Render");
+        renderer->render();
+        ts += time_measure.done();
+    }
+    printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
     img->setNeedsDownload();
     printf("Saving image.\n");
     img->save(parameters["output"].as<std::string>().c_str(), "png16");

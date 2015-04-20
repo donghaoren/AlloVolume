@@ -65,6 +65,7 @@ CUDA_ADD_LIBRARY (
     src/renderer/lens.cu
     src/renderer/image.cu
     src/renderer/image_codec.cpp
+    src/timeprofiler.cpp
 )
 
 TARGET_LINK_LIBRARIES (
