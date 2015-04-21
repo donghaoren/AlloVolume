@@ -1,4 +1,4 @@
-#include "renderer.h"
+#include "allovolume/renderer.h"
 #include "cuda_common.h"
 
 namespace allovolume {

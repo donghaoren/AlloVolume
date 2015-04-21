@@ -1,4 +1,4 @@
-#include "dataset.h"
+#include "allovolume/dataset.h"
 #include "hdf5.h"
 
 #include "stdio.h"
@@ -35,25 +35,25 @@ public:
         int block_size = xsize * ysize * zsize;
         int data_size = block_count * block_size;
         float* data = new float[data_size];
-        H5Dread(dataset_id, H5T_NATIVE_FLOAT, NULL, NULL, H5P_DEFAULT, data);
+        H5Dread(dataset_id, H5T_NATIVE_FLOAT, 0, 0, H5P_DEFAULT, data);
 
         // Read block bounding boxes.
         float* bboxes = new float[block_count * 3 * 2];
         hid_t dataset_bbox = H5Dopen2(file_id, "/bounding box", H5P_DEFAULT);
-        H5Dread(dataset_bbox, H5T_NATIVE_FLOAT, NULL, NULL, H5P_DEFAULT, bboxes);
+        H5Dread(dataset_bbox, H5T_NATIVE_FLOAT, 0, 0, H5P_DEFAULT, bboxes);
 
         // Read block node types.
         int* node_types = new int[block_count];
         hid_t dataset_node_type = H5Dopen2(file_id, "/node type", H5P_DEFAULT);
-        H5Dread(dataset_node_type, H5T_NATIVE_INT, NULL, NULL, H5P_DEFAULT, node_types);
+        H5Dread(dataset_node_type, H5T_NATIVE_INT, 0, 0, H5P_DEFAULT, node_types);
 
         tree_structure_t* gid = new tree_structure_t[block_count];
         hid_t dataset_gid = H5Dopen2(file_id, "/gid", H5P_DEFAULT);
-        H5Dread(dataset_gid, H5T_NATIVE_INT, NULL, NULL, H5P_DEFAULT, gid);
+        H5Dread(dataset_gid, H5T_NATIVE_INT, 0, 0, H5P_DEFAULT, gid);
 
         int* refine_level = new int[block_count];
         hid_t dataset_refine_level = H5Dopen2(file_id, "/refine level", H5P_DEFAULT);
-        H5Dread(dataset_refine_level, H5T_NATIVE_INT, NULL, NULL, H5P_DEFAULT, refine_level);
+        H5Dread(dataset_refine_level, H5T_NATIVE_INT, 0, 0, H5P_DEFAULT, refine_level);
 
         int ghost_count = 1;
 

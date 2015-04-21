@@ -1,4 +1,4 @@
-#include "renderer.h"
+#include "allovolume/renderer.h"
 #include <float.h>
 #include <stdio.h>
 #include <math_functions.h>
@@ -69,6 +69,7 @@ struct ray_marching_parameters_t {
     const Lens::Ray* rays;
     Color* pixels;
     Color* pixels_back;
+    VolumeRenderer::ClipRange* clip_ranges;
 
     Color bg_color;
 
@@ -418,8 +419,12 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     Lens::Ray ray = p.rays[idx];
     register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
     register Vector d = p.pose.rotation.rotate(ray.direction);
-    register float k_front = ray.t_front;
-    register float k_far = ray.t_far;
+    register float k_front = FLT_MAX;
+    register float k_far = FLT_MAX;
+    if(p.clip_ranges) {
+        k_front = p.clip_ranges[idx].t_front;
+        k_far = p.clip_ranges[idx].t_far;
+    }
 
     // Initial color (background color).
     register Color color = p.bg_color;
@@ -779,6 +784,7 @@ public:
         floatChannelDesc = cudaCreateChannelDesc<float>();
         image = NULL;
         image_back = NULL;
+        clip_ranges_cpu = NULL;
     }
 
     struct BlockCompare {
@@ -888,6 +894,10 @@ public:
         return bg_color;
     }
 
+    virtual void setClipRanges(ClipRange* ranges) {
+        clip_ranges_cpu = ranges;
+    }
+
     virtual void render() {
         render(0, 0, image->getWidth(), image->getHeight());
     }
@@ -907,6 +917,14 @@ public:
         vp.vp_x = x0; vp.vp_y = y0;
         vp.vp_width = image->getWidth(); vp.vp_height = image->getHeight();
         lens->getRaysGPU(vp, rays.gpu);
+
+        ClipRange* clip_ranges_gpu = NULL;
+        if(clip_ranges_cpu) {
+            clip_ranges.allocate(image->getWidth() * image->getHeight());
+            clip_ranges.upload(clip_ranges_cpu);
+            clip_ranges_gpu = clip_ranges.gpu;
+        }
+
         cudaThreadSynchronize();
 
         time_profiler.next("PreprocessVolume");
@@ -931,6 +949,7 @@ public:
         pms.rays = rays.gpu;
         pms.pixels = image ? image->getPixelsGPU() : NULL;
         pms.pixels_back = image_back ? image_back->getPixelsGPU() : NULL;
+        pms.clip_ranges = clip_ranges_gpu;
         pms.blocks = blocks.gpu;
         pms.kd_tree = kd_tree.gpu;
         pms.kd_tree_root = kd_tree_root;
@@ -986,6 +1005,8 @@ public:
     MirroredMemory<BlockDescription> blocks;
     MirroredMemory<float> data, data_processed;
     MirroredMemory<Lens::Ray> rays;
+    MirroredMemory<ClipRange> clip_ranges;
+    ClipRange* clip_ranges_cpu;
 
     int block_count;
     TransferFunction* tf;
@@ -1052,7 +1073,7 @@ public:
             cudaError_t err = cudaMallocArray(&tf_texture_data, &channel_desc, size, size);
             if(!tf_texture_data) {
                 int size_bytes = size * size * sizeof(Color);
-                fprintf(stderr, "cudaAllocate: cudaMalloc() of %llu (%.2f MB): %s\n",
+                fprintf(stderr, "cudaAllocate: cudaMalloc() of %d (%.2f MB): %s\n",
                     size_bytes, size_bytes / 1048576.0,
                     cudaGetErrorString(err));
                 size_t memory_free, memory_total;

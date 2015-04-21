@@ -13,9 +13,12 @@ public:
     virtual void setName(const char* name) = 0;
 
     virtual void setDelegate(Delegate* delegate) = 0;
+
     virtual ~TimeProfiler() { }
     static TimeProfiler* Create();
     static TimeProfiler* Default();
+    static Delegate* STDERR_DELEGATE;
+    static Delegate* STDOUT_DELEGATE;
 };
 
 class TimeMeasure {

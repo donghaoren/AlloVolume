@@ -10,6 +10,7 @@ namespace allovolume {
 
     class AllosphereLens : public Lens {
     public:
+        // Perform blending.
         virtual void performBlend(Image* img) = 0;
     };
 

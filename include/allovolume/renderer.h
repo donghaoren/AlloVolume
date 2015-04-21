@@ -56,7 +56,6 @@ class Lens {
 public:
     struct Ray {
         Vector origin, direction;
-        float t_front, t_far;
     };
 
     struct Viewport {
@@ -74,8 +73,6 @@ public:
     // Common parameters.
     void setEyeSeparation(float value) { set<float>("eye_separation", value); }
     void setFocalDistance(float value) { set<float>("focal_distance", value); }
-    void setFront(float value) { set<float>("t_front", value); }
-    void setFar(float value) { set<float>("t_far", value); }
 
     virtual void getRays(Viewport vp, Ray* rays) = 0;
     virtual void getRaysGPU(Viewport vp, Ray* rays) = 0;
@@ -98,7 +95,6 @@ public:
 
     static Lens* CreateEquirectangular();
     static Lens* CreatePerspective(float fovx);
-    static Lens* CreateOrthogonal(float spanx);
 };
 
 struct Pose {
@@ -114,6 +110,10 @@ public:
         kRK4Method = 1,
         kAdaptiveRKFMethod = 2,
         kPreIntegrationMethod = 3
+    };
+
+    struct ClipRange {
+        float t_front, t_far;
     };
 
     // Set volume.
@@ -133,6 +133,8 @@ public:
     // Background color.
     virtual void setBackgroundColor(Color color) = 0;
     virtual Color getBackgroundColor() = 0;
+    // Set clip range, which should be the same size as image and back_image.
+    virtual void setClipRanges(ClipRange* ranges) = 0;
     // Set output image.
     virtual void setImage(Image* image) = 0;
     virtual void setBackImage(Image* image) = 0;

@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 
-#include "renderer.h"
+#include "allovolume/renderer.h"
 #include <float.h>
 #include <stdio.h>
 #include <string.h>

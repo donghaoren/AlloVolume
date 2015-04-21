@@ -1,7 +1,7 @@
 // Command line interface for the renderer.
 
-#include "dataset.h"
-#include "renderer.h"
+#include "allovolume/dataset.h"
+#include "allovolume/renderer.h"
 
 #include <stdio.h>
 #include <string>
@@ -28,6 +28,7 @@ Vector node2vector(const YAML::Node& node) {
 int main(int argc, char* argv[]) {
 
     TimeMeasure time_measure("Main");
+    //TimeProfiler::Default()->setDelegate(TimeProfiler::STDERR_DELEGATE);
 
     YAML::Node parameters;
     if(argc >= 2) {
@@ -113,8 +114,6 @@ int main(int argc, char* argv[]) {
         } break;
     }
     TransferFunction::ParseLayers(tf, 1024, preset.transfer_function().layers().c_str());
-
-    lens->setFront(pose.position.len());
 
     renderer->setVolume(volume);
     renderer->setLens(lens);

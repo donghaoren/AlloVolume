@@ -1,6 +1,6 @@
-#include "renderer.h"
+#include "allovolume/renderer.h"
 #include "configparser.h"
-#include "allosphere/allosphere_calibration.h"
+#include "allovolume/allosphere_calibration.h"
 
 #include <stdio.h>
 #include <stdlib.h>

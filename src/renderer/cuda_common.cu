@@ -7,7 +7,7 @@ namespace allovolume {
         void* result = 0;
         cudaError_t err = cudaMalloc(&result, size);
         if(!result) {
-            fprintf(stderr, "cudaAllocate: cudaMalloc() of %llu (%.2f MB): %s\n",
+            fprintf(stderr, "cudaAllocate: cudaMalloc() of %lu (%.2f MB): %s\n",
                 size, size / 1048576.0,
                 cudaGetErrorString(err));
             size_t memory_free, memory_total;

@@ -1,9 +1,9 @@
 #ifndef ALLOVOLUME_COMMON_H_INCLUDED
 #define ALLOVOLUME_COMMON_H_INCLUDED
 
-#include "dataset.h"
-#include "renderer.h"
-#include "allosphere/allosphere_calibration.h"
+#include "allovolume/dataset.h"
+#include "allovolume/renderer.h"
+#include "allovolume/allosphere_calibration.h"
 #include <zmq.h>
 #include <boost/shared_ptr.hpp>
 #include <vector>

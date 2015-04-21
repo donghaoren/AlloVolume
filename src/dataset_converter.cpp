@@ -1,5 +1,5 @@
-#include "dataset.h"
-#include "renderer.h"
+#include "allovolume/dataset.h"
+#include "allovolume/renderer.h"
 #include <stdio.h>
 
 using namespace allovolume;

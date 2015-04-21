@@ -1,4 +1,4 @@
-#include "renderer.h"
+#include "allovolume/renderer.h"
 #include <float.h>
 #include <stdio.h>
 #include <math_functions.h>
@@ -9,7 +9,7 @@
 namespace allovolume {
 
 __global__
-void get_rays_kernel(Lens::Ray* rays, int pixel_count, Lens::Viewport vp, int width, int height, float focal_distance, float eye_separation, float t_far, float t_front) {
+void get_rays_kernel(Lens::Ray* rays, int pixel_count, Lens::Viewport vp, int width, int height, float focal_distance, float eye_separation) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= pixel_count) return;
     int x = idx % width;
@@ -22,8 +22,6 @@ void get_rays_kernel(Lens::Ray* rays, int pixel_count, Lens::Viewport vp, int wi
     origin += shift;
     rays[idx].origin = origin;
     rays[idx].direction = (lookat - origin).normalize();
-    rays[idx].t_far = t_far;
-    rays[idx].t_front = t_front;
 }
 
 class LensImpl_StereoAware : public Lens {
@@ -31,19 +29,14 @@ public:
     LensImpl_StereoAware() {
         eye_separation = 0.0f;
         focal_distance = 1.0f;
-        t_far = FLT_MAX;
-        t_front = FLT_MAX;
     }
 
     virtual void setParameter(const char* name, const void* value) {
         if(strcmp(name, "eye_separation") == 0) eye_separation = *(float*)value;
         if(strcmp(name, "focal_distance") == 0) focal_distance = *(float*)value;
-        if(strcmp(name, "t_far") == 0) t_far = *(float*)value;
-        if(strcmp(name, "t_front") == 0) t_front = *(float*)value;
     }
 
     float eye_separation, focal_distance;
-    float t_far, t_front;
 };
 
 class LensImpl_Equirectangular : public LensImpl_StereoAware {
@@ -73,12 +66,12 @@ public:
         int number_of_threads = 64;
         int pixel_count = width * height;
         int n_blocks = diviur(pixel_count, number_of_threads);
-        get_rays_kernel<<<n_blocks, number_of_threads>>>(rays, pixel_count, vp, width, height, focal_distance, eye_separation, t_far, t_front);
+        get_rays_kernel<<<n_blocks, number_of_threads>>>(rays, pixel_count, vp, width, height, focal_distance, eye_separation);
     }
 };
 
 __global__
-void get_rays_kernel_perspective(Lens::Ray* rays, int pixel_count, Lens::Viewport vp, int width, int height, float focal_distance, float eye_separation, float screen_width, float t_far, float t_front) {
+void get_rays_kernel_perspective(Lens::Ray* rays, int pixel_count, Lens::Viewport vp, int width, int height, float focal_distance, float eye_separation, float screen_width) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= pixel_count) return;
     int x = idx % width;
@@ -91,8 +84,6 @@ void get_rays_kernel_perspective(Lens::Ray* rays, int pixel_count, Lens::Viewpor
     origin += shift;
     rays[idx].origin = origin;
     rays[idx].direction = (lookat - origin).normalize();
-    rays[idx].t_far = t_far;
-    rays[idx].t_front = t_front;
 }
 
 class LensImpl_Perspective : public LensImpl_StereoAware {
@@ -124,7 +115,7 @@ public:
         int pixel_count = width * height;
         int n_blocks = diviur(pixel_count, number_of_threads);
         float screen_width = tan(fovx / 2.0f) * 2.0f;
-        get_rays_kernel_perspective<<<n_blocks, number_of_threads>>>(rays, pixel_count, vp, width, height, focal_distance, eye_separation, screen_width, t_far, t_front);
+        get_rays_kernel_perspective<<<n_blocks, number_of_threads>>>(rays, pixel_count, vp, width, height, focal_distance, eye_separation, screen_width);
     }
 
     float fovx;
@@ -136,10 +127,6 @@ Lens* Lens::CreateEquirectangular() {
 
 Lens* Lens::CreatePerspective(float fovx) {
     return new LensImpl_Perspective(fovx);
-}
-
-Lens* Lens::CreateOrthogonal(float spanx) {
-
 }
 
 }

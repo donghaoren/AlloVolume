@@ -1,6 +1,6 @@
-#include "renderer.h"
+#include "allovolume/renderer.h"
 #include "configparser.h"
-#include "allosphere/allosphere_calibration.h"
+#include "allovolume/allosphere_calibration.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,7 +81,7 @@ public:
         }
     private:
         HDRenderingTask(const HDRenderingTask&) { }
-        HDRenderingTask& operator = (const HDRenderingTask&) { }
+        HDRenderingTask& operator = (const HDRenderingTask&) { return *this; }
     };
 
     map<string, boost::shared_ptr<HDRenderingTask> > hd_rendering_tasks;
@@ -101,6 +101,7 @@ public:
 
     static void* thread_process_pthread(void* this_) {
         ((Controller*)this_)->thread_process();
+        return NULL;
     }
 
     void set_needs_render() {

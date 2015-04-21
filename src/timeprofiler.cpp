@@ -10,20 +10,28 @@ using namespace std;
 namespace {
     class StderrDelegate : public TimeProfiler::Delegate {
     public:
+        StderrDelegate(FILE* fp_) { fp = fp_; }
+
         virtual void onPrint(const char* scope, const char* name, const char* text, int level) {
             for(int i = 0; i < level - 1; i++)
-                fprintf(stderr, "  ");
-            fprintf(stderr, "[%s] %s: %s\n", scope, name, text);
+                fprintf(fp, "  ");
+            fprintf(fp, "[%s] %s: %s\n", scope, name, text);
         }
+
+        FILE* fp;
     };
 
-    StderrDelegate stderr_delegate;
+    StderrDelegate stderr_delegate(stderr);
+    StderrDelegate stdout_delegate(stdout);
 }
+
+TimeProfiler::Delegate* TimeProfiler::STDERR_DELEGATE = &stderr_delegate;
+TimeProfiler::Delegate* TimeProfiler::STDOUT_DELEGATE = &stdout_delegate;
 
 class TimeProfilerImpl : public TimeProfiler {
 public:
     TimeProfilerImpl() {
-        delegate = &stderr_delegate;
+        delegate = NULL;
     }
 
     virtual void setDelegate(Delegate* delegate_) {
@@ -45,7 +53,9 @@ public:
         scope_stack.pop_back();
     }
     virtual void print(const char* text) {
-        delegate->onPrint(scope_stack.back().c_str(), name.c_str(), text, scope_stack.size());
+        if(delegate) {
+            delegate->onPrint(scope_stack.back().c_str(), name.c_str(), text, scope_stack.size());
+        }
     }
     virtual void setName(const char* name_) {
         name = name_;

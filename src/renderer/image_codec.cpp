@@ -1,4 +1,4 @@
-#include "renderer.h"
+#include "allovolume/renderer.h"
 #include "FreeImage.h"
 #include <string.h>
 
@@ -43,6 +43,7 @@ namespace allovolume {
             }
             FreeImage_Save(FIF_PNG, bitmap, path);
             FreeImage_Unload(bitmap);
+            return true;
         }
         if(strcmp(format, "png") == 0) {
             FIBITMAP* bitmap = FreeImage_AllocateT(FIT_BITMAP, width, height, 32);
@@ -58,6 +59,8 @@ namespace allovolume {
             }
             FreeImage_Save(FIF_PNG, bitmap, path);
             FreeImage_Unload(bitmap);
+            return true;
         }
+        return false;
     }
 }
