@@ -12,6 +12,43 @@ namespace allovolume {
 //   AlloVolume takes the depth buffer, render the volume into two parts.
 //   Finally, blend volume back, cubemap color buffer, volume front together to produce the final image.
 // For speed concerns, AlloVolume works in another thread.
+
+// Typical interoperation sequence:
+/*
+  void init() {
+    OmnistereoRenderer* allovolume = OmnistereoRenderer::CreateWithYAMLConfig("allovolume.yaml");
+    allovolume->setDelegate(myDelegate);
+  }
+
+  void omnistereoFrame() {
+    // Here we're in the OpenGL main thread.
+    // Capture cubemap...
+    // Grab the depth part of the cubemap...
+    allovolume->setCubemap(id);
+
+    // Wait for callback onPresent() from allovolume.
+    // Calling present() directly is okay, but the images won't sync correctly.
+    // Since allovolume can be slow, it's recommended to present() directly.
+  }
+
+  void MyDelegate::onPresent() {
+    // Here we are in allovolume's main thread.
+    // Notify the OpenGL main thread to refresh the scene.
+  }
+
+  void present() {
+    // Here we're in the OpenGL main thread.
+    allovolume->uploadTextures();
+    for(int vp = 0; vp < vp_count; vp++) {
+        for(int eye = 0; eye < eye_count; eye++) {
+            Textures textures = allovolume->getTextures(vp, eye);
+            // Render current viewport by blending
+            // textures.back, omnistereo_cubemap and textures.front together and apply blending.
+        }
+    }
+  }
+ */
+
 class OmnistereoRenderer {
 public:
 

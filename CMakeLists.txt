@@ -99,13 +99,11 @@ TARGET_LINK_LIBRARIES (
 ADD_EXECUTABLE ( renderer
     src/allovolume_renderer.cpp
     src/allovolume_protocol.pb.cc
-    src/allosync.cpp
 )
 
 ADD_EXECUTABLE ( controller
     src/allovolume_controller.cpp
     src/allovolume_protocol.pb.cc
-    src/allosync.cpp
 )
 
 ADD_EXECUTABLE ( render_cli
@@ -162,3 +160,4 @@ TARGET_LINK_LIBRARIES (
     ${Protobuf_LIBRARIES}
     ${Boost_LIBRARIES}
 )
+
