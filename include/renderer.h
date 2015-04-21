@@ -56,6 +56,7 @@ class Lens {
 public:
     struct Ray {
         Vector origin, direction;
+        float t_front, t_far;
     };
 
     struct Viewport {
@@ -73,6 +74,8 @@ public:
     // Common parameters.
     void setEyeSeparation(float value) { set<float>("eye_separation", value); }
     void setFocalDistance(float value) { set<float>("focal_distance", value); }
+    void setFront(float value) { set<float>("t_front", value); }
+    void setFar(float value) { set<float>("t_far", value); }
 
     virtual void getRays(Viewport vp, Ray* rays) = 0;
     virtual void getRaysGPU(Viewport vp, Ray* rays) = 0;
@@ -132,6 +135,7 @@ public:
     virtual Color getBackgroundColor() = 0;
     // Set output image.
     virtual void setImage(Image* image) = 0;
+    virtual void setBackImage(Image* image) = 0;
 
     virtual void setBoundingBox(Vector min, Vector max) = 0;
     virtual void getBoundingBox(Vector& min, Vector& max) = 0;

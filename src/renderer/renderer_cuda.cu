@@ -68,6 +68,7 @@ struct kd_tree_node_t {
 struct ray_marching_parameters_t {
     const Lens::Ray* rays;
     Color* pixels;
+    Color* pixels_back;
 
     Color bg_color;
 
@@ -417,6 +418,8 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     Lens::Ray ray = p.rays[idx];
     register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
     register Vector d = p.pose.rotation.rotate(ray.direction);
+    register float k_front = ray.t_front;
+    register float k_far = ray.t_far;
 
     // Initial color (background color).
     register Color color = p.bg_color;
@@ -425,7 +428,8 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     float g_kin, g_kout;
     intersectBox(pos, d, p.bbox_min, p.bbox_max, &g_kin, &g_kout);
     if(g_kout < 0) {
-        p.pixels[idx] = color;
+        if(p.pixels) p.pixels[idx] = color;
+        if(p.pixels_back) p.pixels_back[idx] = color;
         return;
     }
     if(g_kin < 0) g_kin = 0;
@@ -441,12 +445,40 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
 
     float tf_size = p.tf_size;
 
+    // If rendering with front/back buffer, clamp to k_far, otherwise to k_front.
+    bool is_rendering_back;
+    if(p.pixels_back) {
+        kmax = fminf(k_far, kmax);
+        is_rendering_back = true;
+    } else {
+        kmax = fminf(k_front, kmax);
+        is_rendering_back = false;
+    }
+
     // Render blocks.
     for(int cursor = 0; cursor < blockinfos_count; cursor++) {
         BlockDescription block = p.blocks[blockinfos[cursor].index];
         float kin = blockinfos[cursor].kin;
         float kout = blockinfos[cursor].kout;
-        if(kout > kmax) kout = kmax;
+        if(kout > kmax) {
+            kout = kmax;
+        }
+        bool is_back_finished = false;
+        if(is_rendering_back) {
+            if(kout <= k_front) {
+                if(color.a != 0) {
+                    color.r /= color.a;
+                    color.g /= color.a;
+                    color.b /= color.a;
+                } else color = Color(0, 0, 0, 0);
+                p.pixels_back[idx] = color;
+                color = p.bg_color;
+                is_rendering_back = false;
+            } else if(kin <= k_front) {
+                kin = k_front;
+                is_back_finished = true;
+            }
+        }
         if(kin < kout) {
             // Render this block.
             float distance = kout - kin;
@@ -491,6 +523,20 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
             }
             kmax = kin;
         }
+        if(is_back_finished) {
+            // Un-premultiply alpha channel.
+            if(color.a != 0) {
+                color.r /= color.a;
+                color.g /= color.a;
+                color.b /= color.a;
+            } else color = Color(0, 0, 0, 0);
+            p.pixels_back[idx] = color;
+            // Reinitialize.
+            is_rendering_back = false;
+            color = p.bg_color;
+            // Repeat the current block, since it's partially finished.
+            cursor -= 1;
+        }
     }
 
     // Un-premultiply alpha channel.
@@ -501,7 +547,12 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     } else color = Color(0, 0, 0, 0);
 
     // Color output.
-    p.pixels[idx] = color;
+    if(is_rendering_back) {
+        p.pixels_back[idx] = color;
+        p.pixels[idx] = p.bg_color;
+    } else {
+        p.pixels[idx] = color;
+    }
 }
 
 __global__
@@ -726,6 +777,8 @@ public:
         tf_texture_data_size = 0;
         tf_preint_preprocessed = false;
         floatChannelDesc = cudaCreateChannelDesc<float>();
+        image = NULL;
+        image_back = NULL;
     }
 
     struct BlockCompare {
@@ -790,6 +843,10 @@ public:
 
     virtual void setImage(Image* image_) {
         image = image_;
+    }
+
+    virtual void setBackImage(Image* image_) {
+        image_back = image_;
     }
 
     virtual void setPose(const Pose& pose_) {
@@ -872,7 +929,8 @@ public:
         ray_marching_parameters_t pms;
 
         pms.rays = rays.gpu;
-        pms.pixels = image->getPixelsGPU();
+        pms.pixels = image ? image->getPixelsGPU() : NULL;
+        pms.pixels_back = image_back ? image_back->getPixelsGPU() : NULL;
         pms.blocks = blocks.gpu;
         pms.kd_tree = kd_tree.gpu;
         pms.kd_tree_root = kd_tree_root;
@@ -933,6 +991,7 @@ public:
     TransferFunction* tf;
     Lens* lens;
     Image* image;
+    Image* image_back;
 
     // Rendering parameters:
     Color bg_color;

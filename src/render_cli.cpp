@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
     lens = Lens::CreatePerspective(90.0);
 
     VolumeRenderer* renderer = VolumeRenderer::CreateGPU();
-    renderer->setBackgroundColor(Color(0, 0, 0, 1));
+    renderer->setBackgroundColor(Color(0, 0, 0, 0));
 
     Pose pose;
     pose.position = Vector(preset.pose().x(), preset.pose().y(), preset.pose().z());
@@ -114,10 +114,15 @@ int main(int argc, char* argv[]) {
     }
     TransferFunction::ParseLayers(tf, 1024, preset.transfer_function().layers().c_str());
 
+    lens->setFront(pose.position.len());
+
     renderer->setVolume(volume);
     renderer->setLens(lens);
     renderer->setTransferFunction(tf);
+    Image* img_back = Image::Create(!parameters["width"].IsDefined() ? 800 : parameters["width"].as<int>(),
+                        !parameters["height"].IsDefined() ? 400 : parameters["height"].as<int>());
     renderer->setImage(img);
+    renderer->setBackImage(img_back);
     int trails = 1;
     double ts = 0;
     for(int i = 0; i < trails; i++) {
@@ -127,6 +132,8 @@ int main(int argc, char* argv[]) {
     }
     printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
     img->setNeedsDownload();
+    img_back->setNeedsDownload();
     printf("Saving image.\n");
     img->save(parameters["output"].as<std::string>().c_str(), "png16");
+    img_back->save((string("back_") + parameters["output"].as<std::string>()).c_str(), "png16");
 }

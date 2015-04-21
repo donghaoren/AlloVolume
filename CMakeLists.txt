@@ -113,8 +113,25 @@ ADD_EXECUTABLE ( render_cli
     src/allovolume_protocol.pb.cc
 )
 
+ADD_LIBRARY ( allovolume_omnistereo_renderer SHARED
+  src/omnistereo_renderer.cpp
+  src/allovolume_protocol.pb.cc
+)
+
 TARGET_LINK_LIBRARIES (
   renderer
+    allovolume_dataset
+    allovolume_renderer
+    allovolume_allosphere_calibration
+    ${ZeroMQ_LIBRARIES}
+    ${YAMLCPP_LIBRARIES}
+    ${Protobuf_LIBRARIES}
+    ${GLUT_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+)
+
+TARGET_LINK_LIBRARIES (
+  allovolume_omnistereo_renderer
     allovolume_dataset
     allovolume_renderer
     allovolume_allosphere_calibration

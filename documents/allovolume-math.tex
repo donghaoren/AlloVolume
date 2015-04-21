@@ -199,6 +199,19 @@ The blending equation is:
 c_{v_1} &= M_\alpha(v_0, v_1, s) \big(M_\RGB(v_0, v_1, s) + c_{v_0}\big)
 \end{align*}
 
+In the code of Allovolume, we converted the equations to another form for minimal arithmetic in the ray casting kernel:
+
+\begin{align*}
+P_\alpha(v, s) &= e^{-p Y(v)} \\
+P_\RGB(v, s) &= -p Z(v, p)\\
+\alpha_{v_1} &= \big(P_\alpha(v_0,s) \alpha_{v_0} + P_\alpha(v_1,s) - P_\alpha(v_0,s)\big) / P_\alpha(v_1,s) \\
+c_{v_1} &= \big(P_\alpha(v_0,s) c_{v_0} + P_\RGB(v_1,s) - P_\RGB(v_0,s)\big) / P_\alpha(v_1,s) \\
+\end{align*}
+
+We stored $P_\alpha(v,p)$ and $P_\RGB(v,p)$ in the pre-integration texture (4 channels). $p$ is used in stead of $s$ because
+for different volumes, $s$ might be different, but $p = \frac{s}{L}\frac{1}{v_1 - v_0}$ generally stays within the same range (we currently assume 0 to 100).
+For this method, one thing we have to make sure is $v_1 - v_0 > \epsilon$, otherwise the result can't be accurate since there is a division by $v_1 - v_0$.
+We set $\epsilon$ to $3$ ticks of the transfer function, say if the transfer function has $1000$ colors, and the volume range from $0$ to $1$, then $\epsilon = 3 / 1000$.
 
 
 \end{document}
