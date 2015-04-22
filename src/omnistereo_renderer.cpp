@@ -573,7 +573,12 @@ public:
         int device_count;
         cudaGetDeviceCount(&device_count);
 
-        stereo_mode = kMonoStereoMode;
+        bool is_stereo = config.get<string>("allovolume.stereo", "false") == "true";
+        if(is_stereo) {
+            stereo_mode = kActiveStereoMode;
+        } else {
+            stereo_mode = kMonoStereoMode;
+        }
 
         if(stereo_mode == kActiveStereoMode || stereo_mode == kAnaglyphStereoMode) {
             renderer_left.initialize(0 % device_count, 0, render_slave, 1);
