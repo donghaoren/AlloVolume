@@ -791,8 +791,6 @@ public:
 
             glUseProgram(0);
 
-            { int err = glGetError(); printf("error: %d\n", err); }
-
             glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_right.viewports[i].clip_range->data);
             glBindTexture(GL_TEXTURE_2D, 0);
