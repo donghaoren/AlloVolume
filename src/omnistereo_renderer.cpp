@@ -20,12 +20,7 @@
 
 #include <cuda_runtime.h>
 
-#ifdef __APPLE__
-    #include <GLUT/glut.h>
-#else
-    #include <GL/glut.h>
-    #include <GL/freeglut_ext.h>
-#endif
+#include "opengl_include.h"
 
 using namespace std;
 using namespace allovolume;
