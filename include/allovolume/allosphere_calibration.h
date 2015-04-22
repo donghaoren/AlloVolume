@@ -10,6 +10,9 @@ namespace allovolume {
 
     class AllosphereLens : public Lens {
     public:
+        // OpenGL textures for blend and wrap.
+        virtual unsigned int getBlendTexture() = 0;
+        virtual unsigned int getWrapTexture() = 0;
         // Perform blending.
         virtual void performBlend(Image* img) = 0;
     };

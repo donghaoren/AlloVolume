@@ -66,13 +66,19 @@ public:
     };
 
     virtual void setParameter(const char* name, const void* value) = 0;
+    virtual void getParameter(const char* name, void* value) = 0;
 
     template<typename T>
     void set(const char* name, const T& value) { setParameter(name, &value); }
 
+    template<typename T>
+    T get(const char* name) { T value; getParameter(name, &value); return value; }
+
     // Common parameters.
     void setEyeSeparation(float value) { set<float>("eye_separation", value); }
     void setFocalDistance(float value) { set<float>("focal_distance", value); }
+    float getEyeSeparation() { return get<float>("eye_separation"); }
+    float getFocalDistance() { return get<float>("focal_distance"); }
 
     virtual void getRays(Viewport vp, Ray* rays) = 0;
     virtual void getRaysGPU(Viewport vp, Ray* rays) = 0;
@@ -114,6 +120,7 @@ public:
 
     struct ClipRange {
         float t_front, t_far;
+        float _reserved1, _reserved2;
     };
 
     // Set volume.

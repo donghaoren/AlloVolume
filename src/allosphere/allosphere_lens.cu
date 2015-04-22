@@ -1,4 +1,5 @@
 #include "allovolume/allosphere_calibration.h"
+#include "../opengl_include.h"
 
 namespace allovolume {
 
@@ -54,7 +55,8 @@ __global__ void allosphere_lens_noblend_kernel(Color* data, int width, int heigh
 
 class AllosphereLensImpl : public AllosphereLens {
 public:
-    AllosphereLensImpl(AllosphereCalibration::Projection* projection) {
+    AllosphereLensImpl(AllosphereCalibration::Projection* projection_) {
+        projection = projection_;
         // Warp texture.
         channel_description = cudaCreateChannelDesc<float4>();
         cudaMallocArray(&warp_data, &channel_description, projection->warpWidth, projection->warpHeight);
@@ -66,7 +68,6 @@ public:
         warp_texture.filterMode = cudaFilterModeLinear;
         warp_texture.addressMode[0] = cudaAddressModeClamp;
         warp_texture.addressMode[1] = cudaAddressModeClamp;
-
 
         // Blend texture.
         channel_description_blend = cudaCreateChannelDesc<float>();
@@ -82,6 +83,9 @@ public:
 
         eye_separation = 0;
         focal_distance = 1;
+
+        blend_gltexture = 0;
+        wrap_gltexture = 0;
     }
 
     virtual void setParameter(const char* name, const void* value) {
@@ -92,6 +96,16 @@ public:
             focal_distance = *(float*)value;
         }
     }
+
+    virtual void getParameter(const char* name, void* value) {
+        if(strcmp(name, "eye_separation") == 0) {
+             *(float*)value = eye_separation;
+        }
+        if(strcmp(name, "focal_distance") == 0) {
+            *(float*)value = focal_distance;
+        }
+    }
+
     virtual void getRays(Viewport vp, Ray* rays) { }
     virtual void getRaysGPU(Viewport vp, Ray* rays) {
         int width = vp.vp_width;
@@ -112,6 +126,10 @@ public:
     }
 
     virtual ~AllosphereLensImpl() {
+        if(blend_gltexture) glDeleteTextures(1, &blend_gltexture);
+        if(wrap_gltexture) glDeleteTextures(1, &wrap_gltexture);
+        cudaFreeArray(warp_data);
+        cudaFreeArray(blend_data);
     }
 
     float eye_separation, focal_distance;
@@ -120,14 +138,54 @@ public:
     cudaChannelFormatDesc channel_description;
     cudaArray* blend_data;
     cudaChannelFormatDesc channel_description_blend;
+
+    AllosphereCalibration::Projection* projection;
+
+
+    virtual unsigned int getBlendTexture() {
+        if(blend_gltexture) return blend_gltexture;
+        glGenTextures(1, &blend_gltexture);
+        glBindTexture(GL_TEXTURE_2D, blend_gltexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, projection->blendWidth, projection->blendHeight, 0, GL_LUMINANCE, GL_FLOAT, projection->blendData);
+
+        return blend_gltexture;
+    }
+
+    virtual unsigned int getWrapTexture() {
+        if(wrap_gltexture) return wrap_gltexture;
+        glGenTextures(1, &wrap_gltexture);
+        glBindTexture(GL_TEXTURE_2D, wrap_gltexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, projection->warpWidth, projection->warpHeight, 0, GL_RGBA, GL_FLOAT, projection->warpData);
+
+        return wrap_gltexture;
+    }
+
+    unsigned int blend_gltexture, wrap_gltexture;
 };
 
 class AllosphereLensImpl_Wrapper : public AllosphereLens {
 public:
-    AllosphereLensImpl_Wrapper(Lens* lens_) : lens(lens_) { }
+    AllosphereLensImpl_Wrapper(Lens* lens_) : lens(lens_) {
+        blend_texture = 0;
+        wrap_texture = 0;
+    }
 
     virtual void setParameter(const char* name, const void* value) {
         lens->setParameter(name, value);
+    }
+
+    virtual void getParameter(const char* name, void* value) {
+        lens->getParameter(name, value);
     }
 
     virtual void getRays(Viewport vp, Ray* rays) {
@@ -145,9 +203,67 @@ public:
         cudaThreadSynchronize();
     }
 
+    virtual unsigned int getBlendTexture() {
+        if(blend_texture) return blend_texture;
+        glGenTextures(1, &blend_texture);
+        glBindTexture(GL_TEXTURE_2D, blend_texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        int wh = 1024;
+        float* data = new float[wh * wh];
+        for(int i = 0; i < wh * wh; i++) {
+            data[i] = 1.0f;
+        }
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, wh, wh, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, data);
+
+        delete [] data;
+
+        return blend_texture;
+    }
+    virtual unsigned int getWrapTexture() {
+        if(wrap_texture) return wrap_texture;
+        glGenTextures(1, &wrap_texture);
+        glBindTexture(GL_TEXTURE_2D, wrap_texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        float es_cached = lens->getEyeSeparation();
+        lens->setEyeSeparation(0);
+
+        int width = 1024;
+        int height = 512;
+        Vector* data = new Vector[width * height];
+        Ray* rays = new Ray[width * height];
+        Lens::Viewport vp;
+        vp.width = width;
+        vp.height = height;
+        vp.vp_x = 0; vp.vp_y = 0; vp.vp_width = width; vp.vp_height = height;
+        lens->getRays(vp, rays);
+        for(int i = 0; i < width * height; i++) {
+            data[i] = rays[i].direction;
+        }
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_FLOAT, data);
+
+        delete [] data;
+        delete [] rays;
+
+        lens->setEyeSeparation(es_cached);
+
+        return wrap_texture;
+    }
+
     ~AllosphereLensImpl_Wrapper() {
         delete lens;
+        if(blend_texture) glDeleteTextures(1, &blend_texture);
+        if(wrap_texture) glDeleteTextures(1, &wrap_texture);
     }
+
+    unsigned int blend_texture, wrap_texture;
 
     Lens* lens;
 };

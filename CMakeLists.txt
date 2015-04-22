@@ -85,6 +85,7 @@ TARGET_LINK_LIBRARIES (
     allovolume_renderer
     ${YAMLCPP_LIBRARIES}
     ${FREEIMAGE_LIBRARIES}
+    ${OPENGL_LIBRARIES}
 )
 
 ADD_EXECUTABLE ( dataset_converter
@@ -161,3 +162,23 @@ TARGET_LINK_LIBRARIES (
     ${Boost_LIBRARIES}
 )
 
+INSTALL (
+  DIRECTORY
+    include/allovolume
+  DESTINATION include
+)
+
+# Targets.
+INSTALL (
+  TARGETS
+    allovolume_omnistereo_renderer
+    allovolume_allosphere_calibration
+    allovolume_renderer
+    allovolume_dataset
+    renderer
+    controller
+    render_cli
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+)

@@ -30,6 +30,11 @@ TimeProfiler::Delegate* TimeProfiler::STDOUT_DELEGATE = &stdout_delegate;
 
 class TimeProfilerImpl : public TimeProfiler {
 public:
+    struct ScopeData {
+        string scope;
+        string name;
+    };
+
     TimeProfilerImpl() {
         delegate = NULL;
     }
@@ -47,18 +52,21 @@ public:
     }
 
     virtual void pushScope(const char* scope) {
-        scope_stack.push_back(scope);
+        ScopeData s;
+        s.scope = scope;
+        s.name = "scope";
+        scope_stack.push_back(s);
     }
     virtual void popScope() {
         scope_stack.pop_back();
     }
     virtual void print(const char* text) {
         if(delegate) {
-            delegate->onPrint(scope_stack.back().c_str(), name.c_str(), text, scope_stack.size());
+            delegate->onPrint(scope_stack.back().scope.c_str(), scope_stack.back().name.c_str(), text, scope_stack.size());
         }
     }
     virtual void setName(const char* name_) {
-        name = name_;
+        scope_stack.back().name = name_;
     }
 
     static TimeProfilerImpl* Global() {
@@ -69,8 +77,7 @@ public:
     Delegate* delegate;
     static TimeProfilerImpl* global_instance;
 
-    deque<string> scope_stack;
-    string name;
+    deque<ScopeData> scope_stack;
 };
 
 TimeProfilerImpl* TimeProfilerImpl::global_instance = NULL;

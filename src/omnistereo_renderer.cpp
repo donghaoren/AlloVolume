@@ -1,11 +1,12 @@
 #include "allovolume/renderer.h"
 #include "allovolume/allosphere_calibration.h"
 #include "configparser.h"
+#include "timeprofiler.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <readline/readline.h>
+#include <float.h>
 
 #include <string>
 #include <vector>
@@ -15,7 +16,7 @@
 #include "allovolume_protocol.pb.h"
 #include "allovolume_common.h"
 
-#include "omnistereo_renderer.h"
+#include "allovolume/omnistereo_renderer.h"
 
 #include <cuda_runtime.h>
 
@@ -28,10 +29,6 @@
 
 using namespace std;
 using namespace allovolume;
-
-void* zmq_context;
-
-ConfigParser config;
 
 // The renderer has 4 state varaibles:
 //  volume: The volume to be rendered.
@@ -65,26 +62,57 @@ struct GPURenderThreadEvent {
 class GPURenderThread {
 public:
     // Note: Each GPU thread has its own CUDA contexts, the pointers are not interchangable.
-    VolumeRendererPointer renderer;
-    TransferFunctionPointer tf;
-
-    vector<AllosphereLensPointer> lenses;
-    vector<ImagePointer> images;
-    vector<ImagePointer> images_back;
-
-    // Not accessible from GPU threads.
-    vector<GLuint> textures;
-
-    AllosphereCalibration::RenderSlave* slave;
-
     int thread_id;
 
+    // Global state.
+    boost::shared_ptr<VolumeBlocks> volume;
+    VolumeRendererPointer renderer;
+    TransferFunctionPointer tf;
     Pose current_pose;
-
     float rgb_levels_min;
     float rgb_levels_max;
     float rgb_levels_pow;
 
+    class ClipImageData : public boost::noncopyable {
+    public:
+        ClipImageData(int width, int height) {
+            data = new VolumeRenderer::ClipRange[width * height];
+            for(int i = 0; i < width * height; i++) {
+                data[i].t_far = FLT_MAX;
+                data[i].t_front = FLT_MAX;
+            }
+        }
+        ~ClipImageData() {
+            delete [] data;
+        }
+
+        VolumeRenderer::ClipRange* data;
+    };
+
+    // For each viewport.
+    struct ViewportData {
+        AllosphereLensPointer lens;
+        ImagePointer image_front;
+        ImagePointer image_back;
+        boost::shared_ptr<ClipImageData> clip_range;
+
+        int width, height;
+
+        GLuint texture_front, texture_back;
+
+        void allocate(int width_, int height_) {
+            width = width_;
+            height = height_;
+            image_front.reset(Image::Create(width, height));
+            image_back.reset(Image::Create(width, height));
+            clip_range.reset(new ClipImageData(width, height));
+        }
+    };
+    vector<ViewportData> viewports;
+
+    AllosphereCalibration::RenderSlave* slave;
+
+    // States.
     bool should_exit;
     bool is_dirty;
     int gpu_id;
@@ -95,14 +123,15 @@ public:
 
     float eye;
 
-    boost::shared_ptr<VolumeBlocks> volume;
-
     pthread_t thread;
     pthread_mutex_t mutex;
 
+    void* zmq_context;
     void* socket_push;
     void* socket_sub;
     char client_name[256];
+
+    ConfigParser* config;
 
     GPURenderThread() {
         initialize_complete = false;
@@ -115,6 +144,7 @@ public:
 
     static void* thread_proc(void* this_) {
         ((GPURenderThread*)this_)->thread_entrypoint();
+        return NULL;
     }
 
     void thread_entrypoint() {
@@ -130,23 +160,24 @@ public:
         // Default blending coefficient
         renderer->setBlendingCoefficient(1);
 
+        renderer->setTransferFunction(tf.get());
+
         // Background color set to transparent (we are using front/back mode, which must use transparent to work).
         renderer->setBackgroundColor(Color(0, 0, 0, 0));
 
         // Assign lens for each projection, and the corresponding images.
-        int viewport_width = config.get<int>("allovolume.resolution.width", 960);
-        int viewport_height = config.get<int>("allovolume.resolution.height", 640);
+        int viewport_width = config->get<int>("allovolume.resolution.width", 960);
+        int viewport_height = config->get<int>("allovolume.resolution.height", 640);
         for(int i = 0; i < slave->num_projections; i++) {
             // Lens for this viewport.
-            lenses.push_back(AllosphereLensPointer(AllosphereCalibration::CreateLens(&slave->projections[i])));
-            // Two set of images.
-            images.push_back(ImagePointer(Image::Create(viewport_width, viewport_height)));
-            images_back.push_back(ImagePointer(Image::Create(viewport_width, viewport_height)));
+            ViewportData& vp = viewports[i];
+            vp.lens.reset(AllosphereCalibration::CreateLens(&slave->projections[i]));
+            vp.allocate(viewport_width, viewport_height);
         }
         // Set the len parameters.
         for(int i = 0; i < slave->num_projections; i++) {
-            lenses[i]->setEyeSeparation(eye * 0.065 / 5.00);
-            lenses[i]->setFocalDistance(1.0);
+            viewports[i].lens->setEyeSeparation(eye * 0.065 / 5.00);
+            viewports[i].lens->setFocalDistance(1.0);
         }
 
         // Mark that we have finished initialization.
@@ -163,7 +194,7 @@ public:
 
         // socket_feedback: Messages to the controller.
         void* socket_feedback = zmq_socket(zmq_context, ZMQ_PUSH);
-        zmq_connect(socket_feedback, config.get<string>("sync.feedback").c_str());
+        zmq_connect(socket_feedback, config->get<string>("sync.feedback").c_str());
 
         // Register this renderer thread to the controller.
         protocol::RendererFeedback feedback;
@@ -179,7 +210,7 @@ public:
                 break;
             }
 
-            // printf("Renderer: %s\n", protocol::RendererBroadcast_Type_Name(msg.type()).c_str());
+            //printf("Renderer: %s\n", protocol::RendererBroadcast_Type_Name(msg.type()).c_str());
 
             switch(msg.type()) {
                 case protocol::RendererBroadcast_Type_LoadVolume: {
@@ -205,8 +236,8 @@ public:
                 case protocol::RendererBroadcast_Type_SetLensParameters: {
                     // Set lens parameters.
                     for(int i = 0; i < slave->num_projections; i++) {
-                        lenses[i]->setEyeSeparation(msg.lens_parameters().eye_separation() * eye);
-                        lenses[i]->setFocalDistance(msg.lens_parameters().focal_distance());
+                        viewports[i].lens->setEyeSeparation(msg.lens_parameters().eye_separation() * eye);
+                        viewports[i].lens->setFocalDistance(msg.lens_parameters().focal_distance());
                     }
                 } break;
                 case protocol::RendererBroadcast_Type_SetRendererParameters: {
@@ -325,23 +356,29 @@ public:
 
     void thread_render_scene() {
         if(!volume) return;
-
+        TimeMeasure measure("AlloVolume::GPUThread");
+        measure.begin("RenderViewports");
         for(int i = 0; i < slave->num_projections; i++) {
+            const ViewportData& vp = viewports[i];
             // Set the lens.
-            renderer->setLens(lenses[i].get());
+            renderer->setRaycastingMethod(VolumeRenderer::kPreIntegrationMethod);
+            renderer->setLens(vp.lens.get());
+            renderer->setClipRanges(vp.clip_range->data);
             // Set image: front and back.
-            renderer->setImage(images[i].get());
-            renderer->setBackImage(images_back[i].get());
+            renderer->setImage(vp.image_front.get());
+            renderer->setBackImage(vp.image_back.get());
             // Render.
             renderer->render();
         }
+        measure.done();
         // Call getPixels to actually download the pixels from the GPU.
         pthread_mutex_lock(&mutex);
         for(int i = 0; i < slave->num_projections; i++) {
-
-            images[i]->setNeedsDownload();
-            images[i]->getPixels();
-            images_back[i]->getPixels();
+            const ViewportData& vp = viewports[i];
+            vp.image_front->setNeedsDownload();
+            vp.image_front->getPixels();
+            vp.image_back->setNeedsDownload();
+            vp.image_back->getPixels();
         }
         pthread_mutex_unlock(&mutex);
         is_dirty = true;
@@ -363,6 +400,7 @@ public:
             fprintf(stderr, "Renderer Initialize: %s\n", client_name);
         }
         // Create the textures.
+        viewports.resize(slave->num_projections);
         for(int i = 0; i < slave->num_projections; i++) {
             GLuint tex;
             glGenTextures(1, &tex);
@@ -371,7 +409,15 @@ public:
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            textures.push_back(tex);
+            viewports[i].texture_front = tex;
+
+            glGenTextures(1, &tex);
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            viewports[i].texture_back = tex;
         }
         is_dirty = true;
         // Spawn the rendering thread.
@@ -381,11 +427,18 @@ public:
     void uploadImages() {
         if(!initialize_complete) return;
 
-        if(is_dirty && !textures.empty()) {
+        if(is_dirty && !viewports.empty()) {
+            pthread_mutex_lock(&mutex);
             for(int i = 0; i < slave->num_projections; i++) {
-                glBindTexture(GL_TEXTURE_2D, textures[i]);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, images[i]->getWidth(), images[i]->getHeight(), 0, GL_RGBA, GL_FLOAT, images[i]->getPixels());
+                const ViewportData& vp = viewports[i];
+                glBindTexture(GL_TEXTURE_2D, vp.texture_front);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vp.image_front->getWidth(), vp.image_front->getHeight(), 0,
+                    GL_RGBA, GL_FLOAT, vp.image_front->getPixels());
+                glBindTexture(GL_TEXTURE_2D, vp.texture_back);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vp.image_back->getWidth(), vp.image_back->getHeight(), 0,
+                    GL_RGBA, GL_FLOAT, vp.image_back->getPixels());
             }
+            pthread_mutex_unlock(&mutex);
             is_dirty = false;
         }
     }
@@ -397,19 +450,125 @@ public:
     }
 };
 
+GLuint compileShaderProgram(const std::string& vertex_code, const std::string& fragment_code) {
+    GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+    const GLchar* v_source = (const GLchar*)vertex_code.c_str();
+    glShaderSource(vertex_shader, 1, &v_source, 0);
+    glCompileShader(vertex_shader);
+    GLint isCompiled = 0;
+    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &isCompiled);
+    if(isCompiled == GL_FALSE) {
+        GLint maxLength = 0;
+        glGetShaderiv(vertex_shader, GL_INFO_LOG_LENGTH, &maxLength);
+        // The maxLength includes the NULL character
+        std::vector<GLchar> infoLog(maxLength);
+        glGetShaderInfoLog(vertex_shader, maxLength, &maxLength, &infoLog[0]);
+        // We don't need the shader anymore.
+        glDeleteShader(vertex_shader);
+        // Use the infoLog as you see fit.
+        fprintf(stderr, "Error compile vertex shader:\n%s\n", &infoLog[0]);
+        return 0;
+    }
+
+    GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+    const GLchar* f_source = (const GLchar*)fragment_code.c_str();
+    glShaderSource(fragment_shader, 1, &f_source, 0);
+    glCompileShader(fragment_shader);
+    isCompiled = 0;
+    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &isCompiled);
+    if(isCompiled == GL_FALSE) {
+        GLint maxLength = 0;
+        glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &maxLength);
+        // The maxLength includes the NULL character
+        std::vector<GLchar> infoLog(maxLength);
+        glGetShaderInfoLog(fragment_shader, maxLength, &maxLength, &infoLog[0]);
+        // We don't need the shader anymore.
+        glDeleteShader(fragment_shader);
+        glDeleteShader(vertex_shader);
+        // Use the infoLog as you see fit.
+        fprintf(stderr, "Error compile fragment shader:\n%s\n", &infoLog[0]);
+        return 0;
+    }
+
+    GLuint program = glCreateProgram();
+
+    glAttachShader(program, vertex_shader);
+    glAttachShader(program, fragment_shader);
+    glLinkProgram(program);
+    // Note the different functions here: glGetProgram* instead of glGetShader*.
+    GLint isLinked = 0;
+    glGetProgramiv(program, GL_LINK_STATUS, (int *)&isLinked);
+    if(isLinked == GL_FALSE) {
+        GLint maxLength = 0;
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
+        // The maxLength includes the NULL character
+        std::vector<GLchar> infoLog(maxLength);
+        glGetProgramInfoLog(program, maxLength, &maxLength, &infoLog[0]);
+        // We don't need the program anymore.
+        glDeleteProgram(program);
+        // Don't leak shaders either.
+        glDeleteShader(vertex_shader);
+        glDeleteShader(fragment_shader);
+        fprintf(stderr, "Error linking program:\n%s\n", &infoLog[0]);
+        return 0;
+    }
+
+    glDetachShader(program, vertex_shader);
+    glDetachShader(program, fragment_shader);
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
+
+    return program;
+}
+
+#define STRINGIFY(s) #s
+
+const char* kGLSL_loadDepthCubemap_vertex = STRINGIFY(
+    varying vec2 T;
+    void main(void) {
+        // Pass through the texture coordinate (normalized pixel):
+        T = vec2(gl_MultiTexCoord0);
+        gl_Position = vec4(T * 2.0 - 1.0, 0.0, 1.0);
+    }
+);
+
+const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
+    uniform sampler2D pixel_map;
+    uniform samplerCube depth_cube_map;
+    uniform float omni_near;
+    uniform float omni_far;
+
+    varying vec2 T;
+
+    void main (void) {
+        // ray location (calibration space):
+        vec3 v = normalize(texture2D(pixel_map, T).rgb);
+        // index into cubemap:
+        float depth = textureCube(depth_cube_map, -v.yzx).r;
+        depth = 1.0 / omni_far / (omni_far / (omni_far - omni_near) - depth);
+        gl_FragColor.rgba = vec4(depth, 1e20, 0.0, 0.0);
+        //gl_FragColor.rgba = vec4(0.4, 0.4, 0.4, 0.2);
+    }
+);
+
 class OmnistereoRendererImpl : public OmnistereoRenderer {
 public:
 
     OmnistereoRendererImpl() {
         zmq_context = zmq_ctx_new();
+        renderer_left.zmq_context = zmq_context;
+        renderer_right.zmq_context = zmq_context;
+        renderer_left.config = &config;
+        renderer_right.config = &config;
+        load_depth_cubemap_program = 0;
     }
 
     void loadConfigurationFile(const char* path) {
-        config.parseFile("allovolume.yaml");
+        config.parseFile(path);
         char hostname[256];
         gethostname(hostname, 256);
-        config.parseFile("allovolume.yaml", hostname);
-        config.parseFile("allovolume.yaml", "renderer");
+        config.parseFile(path, hostname);
+        config.parseFile(path, "renderer");
 
         string calibration_dir = string(getenv("HOME")) + "/calibration-current";
         calibration = AllosphereCalibration::Load(config.get<string>("allosphere.calibration", calibration_dir).c_str());
@@ -418,6 +577,8 @@ public:
 
         int device_count;
         cudaGetDeviceCount(&device_count);
+
+        stereo_mode = kMonoStereoMode;
 
         if(stereo_mode == kActiveStereoMode || stereo_mode == kAnaglyphStereoMode) {
             renderer_left.initialize(0 % device_count, 0, render_slave, 1);
@@ -433,10 +594,43 @@ public:
             renderer_left.initialize(0 % device_count, 0, render_slave, 0);
             total_threads = 1;
         }
+
+        load_depth_cubemap_program = compileShaderProgram(kGLSL_loadDepthCubemap_vertex, kGLSL_loadDepthCubemap_fragment);
+        glUseProgram(load_depth_cubemap_program);
+        glUniform1i(glGetUniformLocation(load_depth_cubemap_program, "pixel_map"), 1);
+        glUniform1i(glGetUniformLocation(load_depth_cubemap_program, "depth_cube_map"), 0);
+        glUseProgram(0);
+
+        int viewport_width = config.get<int>("allovolume.resolution.width", 960);
+        int viewport_height = config.get<int>("allovolume.resolution.height", 640);
+
+        glGenTextures(1, &load_depth_cubemap_render_texture);
+        glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, viewport_width, viewport_height, 0,
+                    GL_RGBA, GL_FLOAT, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glGenFramebuffers(1, &load_depth_cubemap_framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, load_depth_cubemap_render_texture, 0);
+
+        GLenum status;
+        status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if(status != GL_FRAMEBUFFER_COMPLETE) {
+            printf("Framebuffer incomplete: %d\n", status);
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     static void* subscription_thread_pthread(void* this_) {
         ((OmnistereoRendererImpl*)this_)->subscription_thread();
+        return NULL;
     }
 
     void subscription_thread() {
@@ -465,9 +659,12 @@ public:
         }
     }
 
-    void startup() {
-        pthread_create(&thread, NULL, subscription_thread_pthread, this);
+    static void* main_thread_pthread(void* this_) {
+        ((OmnistereoRendererImpl*)this_)->main_thread();
+        return NULL;
+    }
 
+    void main_thread() {
         void* socket_pull = zmq_socket(zmq_context, ZMQ_PULL);
         zmq_bind(socket_pull, "inproc://render_slaves_push");
         // zmq_setsockopt_ez(socket_pull, ZMQ_RCVTIMEO, 10); // recv timeout = 10ms.
@@ -493,17 +690,71 @@ public:
         }
     }
 
-    // Set the cubemap for depth buffer.
-    virtual void setCubemap(unsigned int cubemap_id) {
+    void startup() {
+        pthread_create(&thread, NULL, subscription_thread_pthread, this);
+        pthread_create(&thread_main, NULL, main_thread_pthread, this);
     }
 
-    virtual void setDepthTexture(int viewport, int eye) {
+    // Set the cubemap for depth buffer.
+    virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far) {
+        for(int i = 0; i < renderer_left.viewports.size(); i++) {
+            if(!renderer_left.initialize_complete) continue;
+            const GPURenderThread::ViewportData& vp = renderer_left.viewports[i];
+            GLuint wrap_texture = vp.lens->getWrapTexture();
+
+            int viewport_width = config.get<int>("allovolume.resolution.width", 960);
+            int viewport_height = config.get<int>("allovolume.resolution.height", 640);
+
+            glUseProgram(load_depth_cubemap_program);
+
+            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
+            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
+
+            glActiveTexture(GL_TEXTURE1);
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, wrap_texture);
+
+            glActiveTexture(GL_TEXTURE0);
+            glEnable(GL_TEXTURE_CUBE_MAP);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth_left);
+
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
+
+            // Draw the stuff.
+            glViewport(0, 0, viewport_width, viewport_height);
+            glBegin(GL_QUADS);
+            glVertex3f(-1, -1, 0); glTexCoord2f(0, 0);
+            glVertex3f(-1, +1, 0); glTexCoord2f(0, 1);
+            glVertex3f(+1, +1, 0); glTexCoord2f(1, 1);
+            glVertex3f(+1, -1, 0); glTexCoord2f(1, 0);
+            glEnd();
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            glActiveTexture(GL_TEXTURE0);
+            glDisable(GL_TEXTURE_CUBE_MAP);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+            glUseProgram(0);
+
+            glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_left.viewports[i].clip_range->data);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
     }
 
     // Upload viewport textures.
     virtual void uploadTextures() {
         renderer_left.uploadImages();
-        renderer_right.uploadImages();
+        if(total_threads == 2) {
+            renderer_right.uploadImages();
+        }
     }
 
     // Get viewport textures.
@@ -523,9 +774,17 @@ public:
             r_eyes[1] = &renderer_left;
         }
         Textures result;
-        result.front = r_eyes[eye]->textures[viewport];
-        result.back = result.front;
+        result.front = r_eyes[eye]->viewports[viewport].texture_front;
+        result.back = r_eyes[eye]->viewports[viewport].texture_back;
         return result;
+    }
+
+    virtual bool isReady() {
+        if(total_threads == 1) {
+            return renderer_left.initialize_complete;
+        } else {
+            return renderer_left.initialize_complete && renderer_right.initialize_complete;
+        }
     }
 
     // Set the delegate.
@@ -537,21 +796,27 @@ public:
         zmq_ctx_destroy(zmq_context);
     }
 
+
     AllosphereCalibration* calibration;
     GPURenderThread renderer_left, renderer_right;
     AllosphereCalibration::RenderSlave* render_slave;
     pthread_t thread;
+    pthread_t thread_main;
     int total_threads;
     StereoMode stereo_mode;
 
     ConfigParser config;
     void* zmq_context;
 
+    GLuint load_depth_cubemap_program, load_depth_cubemap_render_texture, load_depth_cubemap_framebuffer;
+
     Delegate* delegate;
 };
 
 OmnistereoRenderer* OmnistereoRenderer::CreateWithYAMLConfig(const char* path) {
+    TimeProfiler::Default()->setDelegate(TimeProfiler::STDERR_DELEGATE);
     OmnistereoRendererImpl* impl = new OmnistereoRendererImpl();
     impl->loadConfigurationFile(path);
+    impl->startup();
     return impl;
 }
