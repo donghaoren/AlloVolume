@@ -903,14 +903,11 @@ public:
     }
 
     virtual void render(int x0, int y0, int total_width, int total_height) {
-        TimeMeasure time_profiler("GPURender");
         // Prepare image.
         int pixel_count = image->getWidth() * image->getHeight();
         rays.allocate(pixel_count);
 
         // Generate rays.
-        time_profiler.begin("GenerateRays");
-
         Lens::Viewport vp;
         vp.width = total_width;
         vp.height = total_height;
@@ -925,14 +922,9 @@ public:
             clip_ranges_gpu = clip_ranges.gpu;
         }
 
-        cudaThreadSynchronize();
-
-        time_profiler.next("PreprocessVolume");
         // Proprocess the scale of the transfer function.
         preprocessVolume();
-        cudaThreadSynchronize();
 
-        time_profiler.next("PreprocessTransferFunction");
         // Upload the transfer function.
         if(raycasting_method == kPreIntegrationMethod) {
             if(!tf_preint_preprocessed) {
@@ -974,9 +966,6 @@ public:
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
 
-        cudaThreadSynchronize();
-
-        time_profiler.next("Render");
         if(raycasting_method == kBasicBlendingMethod) {
             bindTransferFunctionTexture();
             ray_marching_kernel_basic<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
@@ -998,7 +987,6 @@ public:
             unbindTransferFunctionTexture();
         }
         cudaThreadSynchronize();
-        time_profiler.done();
     }
 
     // Memory regions:
