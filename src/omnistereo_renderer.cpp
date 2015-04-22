@@ -744,6 +744,59 @@ public:
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_left.viewports[i].clip_range->data);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
+        if(total_threads == 1) return;
+        for(int i = 0; i < renderer_right.viewports.size(); i++) {
+            if(!renderer_right.initialize_complete) continue;
+            const GPURenderThread::ViewportData& vp = renderer_right.viewports[i];
+            GLuint wrap_texture = vp.lens->getWrapTexture();
+
+            int viewport_width = config.get<int>("allovolume.resolution.width", 960);
+            int viewport_height = config.get<int>("allovolume.resolution.height", 640);
+
+            glUseProgram(load_depth_cubemap_program);
+
+            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
+            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
+
+            glActiveTexture(GL_TEXTURE1);
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, wrap_texture);
+
+            glActiveTexture(GL_TEXTURE0);
+            glEnable(GL_TEXTURE_CUBE_MAP);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth_right);
+
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
+
+            // Draw the stuff.
+            glViewport(0, 0, viewport_width, viewport_height);
+            glBegin(GL_QUADS);
+            glVertex3f(-1, -1, 0); glTexCoord2f(0, 0);
+            glVertex3f(-1, +1, 0); glTexCoord2f(0, 1);
+            glVertex3f(+1, +1, 0); glTexCoord2f(1, 1);
+            glVertex3f(+1, -1, 0); glTexCoord2f(1, 0);
+            glEnd();
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            glActiveTexture(GL_TEXTURE0);
+            glDisable(GL_TEXTURE_CUBE_MAP);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+            glUseProgram(0);
+
+            { int err = glGetError(); printf("error: %d\n", err); }
+
+            glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_right.viewports[i].clip_range->data);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
     }
 
     // Upload viewport textures.
