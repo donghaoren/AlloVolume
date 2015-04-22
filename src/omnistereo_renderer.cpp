@@ -537,7 +537,7 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         vec3 v = normalize(texture2D(pixel_map, T).rgb);
         // index into cubemap:
         float zb = textureCube(depth_cube_map, -v.yzx).r;
-        float depth = omni_far * omni_near / (omni_far - zb * (omni_near - omni_far));
+        float depth = omni_far * omni_near / (omni_far + zb * (omni_near - omni_far));
 
         gl_FragColor.rgba = vec4(depth / 1000.0, 1.0, 0.0, 0.0);
         //gl_FragColor.rgba = vec4(0.4, 0.4, 0.4, 0.2);
