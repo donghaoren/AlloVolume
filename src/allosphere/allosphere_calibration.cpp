@@ -17,7 +17,6 @@ public:
         const char* hosts[] = {
             "gr02", "gr03", "gr04", "gr05", "gr06", "gr07",
             "gr08", "gr09", "gr10", "gr11", "gr12", "gr13", "gr14",
-            "donghao-mac.local",
             NULL
         };
 
