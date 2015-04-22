@@ -351,8 +351,6 @@ public:
 
     void thread_render_scene() {
         if(!volume) return;
-        TimeMeasure measure("AlloVolume::GPUThread");
-        measure.begin("RenderViewports");
         for(int i = 0; i < slave->num_projections; i++) {
             const ViewportData& vp = viewports[i];
             // Set the lens.
@@ -365,7 +363,6 @@ public:
             // Render.
             renderer->render();
         }
-        measure.done();
         // Call getPixels to actually download the pixels from the GPU.
         pthread_mutex_lock(&mutex);
         for(int i = 0; i < slave->num_projections; i++) {
