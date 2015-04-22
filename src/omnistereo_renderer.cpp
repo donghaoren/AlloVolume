@@ -521,6 +521,7 @@ const char* kGLSL_loadDepthCubemap_vertex = STRINGIFY(
         // Pass through the texture coordinate (normalized pixel):
         T = vec2(gl_MultiTexCoord0);
         gl_Position = vec4(T * 2.0 - 1.0, 0.0, 1.0);
+        gl_Position.y = -gl_Position.y;
     }
 );
 
