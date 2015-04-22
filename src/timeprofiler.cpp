@@ -58,10 +58,12 @@ public:
         scope_stack.push_back(s);
     }
     virtual void popScope() {
-        scope_stack.pop_back();
+        if(scope_stack.size() > 0) {
+            scope_stack.pop_back();
+        }
     }
     virtual void print(const char* text) {
-        if(delegate) {
+        if(delegate && scope_stack.size() > 0) {
             delegate->onPrint(scope_stack.back().scope.c_str(), scope_stack.back().name.c_str(), text, scope_stack.size());
         }
     }
