@@ -536,9 +536,10 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         // ray location (calibration space):
         vec3 v = normalize(texture2D(pixel_map, T).rgb);
         // index into cubemap:
-        float depth = textureCube(depth_cube_map, -v.yzx).r;
-        depth = 1.0 / omni_far / (omni_far / (omni_far - omni_near) - depth);
-        gl_FragColor.rgba = vec4(depth, 1e20, 0.0, 0.0);
+        float zb = textureCube(depth_cube_map, -v.yzx).r;
+        depth = omni_far * omni_near / (omni_far - zb * (omni_near - omni_far));
+
+        gl_FragColor.rgba = vec4(depth / 1000.0, 1.0, 0.0, 0.0);
         //gl_FragColor.rgba = vec4(0.4, 0.4, 0.4, 0.2);
     }
 );
@@ -742,6 +743,11 @@ public:
 
             glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_left.viewports[i].clip_range->data);
+            VolumeRenderer::ClipRange* d = renderer_left.viewports[i].clip_range->data;
+            for(int p = 0; p < viewport_width * viewport_height; p++) {
+                d[p].t_far *= 1000;
+                d[p].t_front *= 1000;
+            }
             glBindTexture(GL_TEXTURE_2D, 0);
         }
         if(total_threads == 1) return;
@@ -793,6 +799,11 @@ public:
 
             glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_right.viewports[i].clip_range->data);
+            VolumeRenderer::ClipRange* d = renderer_right.viewports[i].clip_range->data;
+            for(int p = 0; p < viewport_width * viewport_height; p++) {
+                d[p].t_far *= 1000;
+                d[p].t_front *= 1000;
+            }
             glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
