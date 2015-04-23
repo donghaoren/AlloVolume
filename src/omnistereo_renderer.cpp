@@ -770,7 +770,8 @@ public:
 
             renderer.unlock();
             double t1 = TimeProfiler::Default()->getTime();
-            printf("getTexImage2D: %.3lf ms\n", (t1 - t0) * 1000);
+            int err = glGetError();
+            printf("getTexImage2D: %.3lf ms err=%d\n", (t1 - t0) * 1000, err);
             break;
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
