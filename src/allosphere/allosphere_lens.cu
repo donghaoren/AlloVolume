@@ -107,7 +107,7 @@ public:
 
     virtual void getParameter(const char* name, void* value) {
         if(strcmp(name, "eye_separation") == 0) {
-             *(float*)value = eye_separation;
+            *(float*)value = eye_separation;
         }
         if(strcmp(name, "focal_distance") == 0) {
             *(float*)value = focal_distance;

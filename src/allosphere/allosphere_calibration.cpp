@@ -75,7 +75,7 @@ public:
             fread(buf, sizeof(float), proj_out.warpWidth * proj_out.warpHeight, fwarp); // z
             for(int j = 0; j < proj_out.warpWidth * proj_out.warpHeight; j++) {
                 proj_out.warpData[j].z = buf[j];
-                proj_out.warpData[j].w = 0.0f;
+                proj_out.warpData[j].w = 1.0f;
             }
             delete [] buf;
             fclose(fwarp);
