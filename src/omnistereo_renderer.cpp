@@ -617,19 +617,30 @@ public:
         viewport_width = config.get<int>("allovolume.resolution.width", 960);
         viewport_height = config.get<int>("allovolume.resolution.height", 640);
 
-        glGenTextures(1, &load_depth_cubemap_render_texture);
-        glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, viewport_width, viewport_height, 0, GL_RG, GL_FLOAT, 0);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        // glGenTextures(1, &load_depth_cubemap_render_texture);
+        // glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        // glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, viewport_width, viewport_height, 0, GL_RG, GL_FLOAT, 0);
+        // glBindTexture(GL_TEXTURE_2D, 0);
 
         glGenFramebuffers(1, &load_depth_cubemap_framebuffer);
         glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, load_depth_cubemap_render_texture, 0);
+
+        GLuint colorrenderbuffer;
+        glGenRenderbuffers(1, &colorrenderbuffer);
+        glBindRenderbuffer(GL_RENDERBUFFER, colorrenderbuffer);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_RG32F, viewport_width, viewport_height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, colorrenderbuffer);
+
+        // GLuint depthrenderbuffer;
+        // glGenRenderbuffers(1, &depthrenderbuffer);
+        // glBindRenderbuffer(GL_RENDERBUFFER, depthrenderbuffer);
+        // glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, viewport_width, viewport_height);
+        // glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthrenderbuffer);
 
         GLenum status;
         status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -708,33 +719,30 @@ public:
     }
 
     void loadDepthCubemapRenderer(GPURenderThread& renderer, unsigned int texDepth, float near, float far) {
+        // Use the depth cubemap to clip range shader.
+        glUseProgram(load_depth_cubemap_program);
+        glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
+        glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
+
+        // Bind the framebuffer.
+        glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
+        glViewport(0, 0, viewport_width, viewport_height);
+
+        glActiveTexture(GL_TEXTURE0);
+        glEnable(GL_TEXTURE_CUBE_MAP);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth);
+
         for(int vp_idx = 0; vp_idx < renderer.viewports.size(); vp_idx++) {
             if(!renderer.initialize_complete) continue;
             const GPURenderThread::ViewportData& vp = renderer.viewports[vp_idx];
             GLuint wrap_texture = vp.lens->getWrapTexture();
 
-            glUseProgram(load_depth_cubemap_program);
-
-            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
-            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
-
             glActiveTexture(GL_TEXTURE1);
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, wrap_texture);
 
-            glActiveTexture(GL_TEXTURE0);
-            glEnable(GL_TEXTURE_CUBE_MAP);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth);
-
-            glDisable(GL_DEPTH_TEST);
-            glDepthMask(GL_FALSE);
-            glDisable(GL_BLEND);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, load_depth_cubemap_render_texture, 0);
-
             // Draw the stuff.
-            glViewport(0, 0, viewport_width, viewport_height);
             glClear(GL_COLOR_BUFFER_BIT);
 
             glBegin(GL_QUADS);
@@ -744,29 +752,13 @@ public:
             glTexCoord2f(1, 0); glVertex3f(+1, -1, 0);
             glEnd();
 
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, 0);
-            glDisable(GL_TEXTURE_2D);
-
-            glActiveTexture(GL_TEXTURE0);
-            glDisable(GL_TEXTURE_CUBE_MAP);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-
-            glUseProgram(0);
-
-            glEnable(GL_DEPTH_TEST);
-            glDepthMask(GL_TRUE);
-            glEnable(GL_BLEND);
-
-            glActiveTexture(GL_TEXTURE0);
-            glEnable(GL_TEXTURE_2D);
-            glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-            glFlush();
+            // Read pixels.
+            double t0 = TimeProfiler::Default()->getTime();
             renderer.lock();
-            glGetTexImage(GL_TEXTURE_2D, 0, GL_RG, GL_FLOAT, vp.clip_range->data);
+            glReadPixels(0, 0, viewport_width, viewport_height, GL_RG, GL_FLOAT, vp.clip_range->data);
+            printf("t:%d vp:%d wrap=%d = %lu\n", renderer.gpu_id, vp_idx, wrap_texture, vp.clip_range->data);
             // Write the image to file.
+            /*
             fprintf(stderr, "File writing.\n");
             char filename[64];
             sprintf(filename, "depthRanges-t%d-vp%d.bin", renderer.gpu_id, vp_idx);
@@ -774,19 +766,31 @@ public:
             fwrite(vp.clip_range->data, sizeof(VolumeRenderer::ClipRange), vp.clip_range->size, fp);
             fclose(fp);
             fprintf(stderr, "File wrote.\n");
+            */
 
             renderer.unlock();
-            glBindTexture(GL_TEXTURE_2D, 0);
-            glDisable(GL_TEXTURE_2D);
+            double t1 = TimeProfiler::Default()->getTime();
+            printf("getTexImage2D: %.3lf ms\n", (t1 - t0) * 1000);
+            break;
         }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glUseProgram(0);
     }
 
     // Set the cubemap for depth buffer.
     virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far) {
+        glPushAttrib(GL_ALL_ATTRIB_BITS);
+
+        glDepthMask(GL_FALSE);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
         loadDepthCubemapRenderer(renderer_left, texDepth_left, near, far);
-        if(total_threads >= 2) {
+        if(total_threads >= 2 && false) {
             loadDepthCubemapRenderer(renderer_right, texDepth_right, near, far);
         }
+        glPopAttrib();
     }
 
     // Upload viewport textures.
