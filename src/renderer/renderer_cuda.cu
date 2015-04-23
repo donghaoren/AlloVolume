@@ -894,8 +894,13 @@ public:
         return bg_color;
     }
 
-    virtual void setClipRanges(ClipRange* ranges) {
+    virtual void setClipRanges(ClipRange* ranges, size_t size) {
         clip_ranges_cpu = ranges;
+        if(clip_ranges_cpu) {
+            clip_ranges.allocate(size);
+            clip_ranges.upload(clip_ranges_cpu);
+            cudaThreadSynchronize();
+        }
     }
 
     virtual void render() {
@@ -917,8 +922,6 @@ public:
 
         ClipRange* clip_ranges_gpu = NULL;
         if(clip_ranges_cpu) {
-            clip_ranges.allocate(image->getWidth() * image->getHeight());
-            clip_ranges.upload(clip_ranges_cpu);
             clip_ranges_gpu = clip_ranges.gpu;
         }
 

@@ -120,7 +120,6 @@ public:
 
     struct ClipRange {
         float t_front, t_far;
-        float _reserved1, _reserved2;
     };
 
     // Set volume.
@@ -141,7 +140,7 @@ public:
     virtual void setBackgroundColor(Color color) = 0;
     virtual Color getBackgroundColor() = 0;
     // Set clip range, which should be the same size as image and back_image.
-    virtual void setClipRanges(ClipRange* ranges) = 0;
+    virtual void setClipRanges(ClipRange* ranges, size_t size) = 0;
     // Set output image.
     virtual void setImage(Image* image) = 0;
     virtual void setBackImage(Image* image) = 0;

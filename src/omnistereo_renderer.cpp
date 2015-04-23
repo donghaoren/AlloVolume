@@ -71,6 +71,7 @@ public:
     class ClipImageData : public boost::noncopyable {
     public:
         ClipImageData(int width, int height) {
+            size = width * height;
             data = new VolumeRenderer::ClipRange[width * height];
             for(int i = 0; i < width * height; i++) {
                 data[i].t_far = FLT_MAX;
@@ -82,6 +83,7 @@ public:
         }
 
         VolumeRenderer::ClipRange* data;
+        int size;
     };
 
     // For each viewport.
@@ -369,14 +371,14 @@ public:
             // Set the lens.
             renderer->setRaycastingMethod(VolumeRenderer::kPreIntegrationMethod);
             renderer->setLens(vp.lens.get());
-            renderer->setClipRanges(vp.clip_range->data);
+            lock();
+            renderer->setClipRanges(vp.clip_range->data, vp.clip_range->size);
+            unlock();
             // Set image: front and back.
             renderer->setImage(vp.image_front.get());
             renderer->setBackImage(vp.image_back.get());
             // Render.
-            lock();
             renderer->render();
-            unlock();
         }
         // Call getPixels to actually download the pixels from the GPU.
         lock();
@@ -612,18 +614,17 @@ public:
         glUniform1i(glGetUniformLocation(load_depth_cubemap_program, "depth_cube_map"), 0);
         glUseProgram(0);
 
-        int viewport_width = config.get<int>("allovolume.resolution.width", 960);
-        int viewport_height = config.get<int>("allovolume.resolution.height", 640);
+        viewport_width = config.get<int>("allovolume.resolution.width", 960);
+        viewport_height = config.get<int>("allovolume.resolution.height", 640);
 
         glGenTextures(1, &load_depth_cubemap_render_texture);
         glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, viewport_width, viewport_height, 0,
-                    GL_RGBA, GL_FLOAT, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, viewport_width, viewport_height, 0, GL_RG, GL_FLOAT, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
 
         glGenFramebuffers(1, &load_depth_cubemap_framebuffer);
@@ -706,15 +707,11 @@ public:
         pthread_create(&thread_main, NULL, main_thread_pthread, this);
     }
 
-    // Set the cubemap for depth buffer.
-    virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far) {
-        for(int vp_idx = 0; vp_idx < renderer_left.viewports.size(); vp_idx++) {
-            if(!renderer_left.initialize_complete) continue;
-            const GPURenderThread::ViewportData& vp = renderer_left.viewports[vp_idx];
+    void loadDepthCubemapRenderer(GPURenderThread& renderer, unsigned int texDepth, float near, float far) {
+        for(int vp_idx = 0; vp_idx < renderer.viewports.size(); vp_idx++) {
+            if(!renderer.initialize_complete) continue;
+            const GPURenderThread::ViewportData& vp = renderer.viewports[vp_idx];
             GLuint wrap_texture = vp.lens->getWrapTexture();
-
-            int viewport_width = config.get<int>("allovolume.resolution.width", 960);
-            int viewport_height = config.get<int>("allovolume.resolution.height", 640);
 
             glUseProgram(load_depth_cubemap_program);
 
@@ -727,7 +724,7 @@ public:
 
             glActiveTexture(GL_TEXTURE0);
             glEnable(GL_TEXTURE_CUBE_MAP);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth_left);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth);
 
             glDisable(GL_DEPTH_TEST);
             glDepthMask(GL_FALSE);
@@ -759,71 +756,37 @@ public:
 
             glUseProgram(0);
 
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+            glEnable(GL_BLEND);
+
             glActiveTexture(GL_TEXTURE0);
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-            renderer_left.lock();
-            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, vp.clip_range->data);
-            renderer_left.unlock();
+            glFlush();
+            renderer.lock();
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RG, GL_FLOAT, vp.clip_range->data);
+            // Write the image to file.
+            fprintf(stderr, "File writing.\n");
+            char filename[64];
+            sprintf(filename, "depthRanges-t%d-vp%d.bin", renderer.gpu_id, vp_idx);
+            FILE* fp = fopen(filename, "wb");
+            fwrite(vp.clip_range->data, sizeof(VolumeRenderer::ClipRange), vp.clip_range->size, fp);
+            fclose(fp);
+            fprintf(stderr, "File wrote.\n");
+
+            renderer.unlock();
             glBindTexture(GL_TEXTURE_2D, 0);
             glDisable(GL_TEXTURE_2D);
         }
-        // if(total_threads == 1) return;
-        // for(int i = 0; i < renderer_right.viewports.size(); i++) {
-        //     if(!renderer_right.initialize_complete) continue;
-        //     const GPURenderThread::ViewportData& vp = renderer_right.viewports[i];
-        //     GLuint wrap_texture = vp.lens->getWrapTexture();
+    }
 
-        //     int viewport_width = config.get<int>("allovolume.resolution.width", 960);
-        //     int viewport_height = config.get<int>("allovolume.resolution.height", 640);
-
-        //     glUseProgram(load_depth_cubemap_program);
-
-        //     glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
-        //     glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
-
-        //     glActiveTexture(GL_TEXTURE1);
-        //     glEnable(GL_TEXTURE_2D);
-        //     glBindTexture(GL_TEXTURE_2D, wrap_texture);
-
-        //     glActiveTexture(GL_TEXTURE0);
-        //     glEnable(GL_TEXTURE_CUBE_MAP);
-        //     glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth_right);
-
-        //     glDisable(GL_DEPTH_TEST);
-        //     glDepthMask(GL_FALSE);
-
-        //     glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
-
-        //     // Draw the stuff.
-        //     glViewport(0, 0, viewport_width, viewport_height);
-        //     glBegin(GL_QUADS);
-        //     glTexCoord2f(0, 0); glVertex3f(-1, -1, 0);
-        //     glTexCoord2f(0, 1); glVertex3f(-1, +1, 0);
-        //     glTexCoord2f(1, 1); glVertex3f(+1, +1, 0);
-        //     glTexCoord2f(1, 0); glVertex3f(+1, -1, 0);
-        //     glEnd();
-
-        //     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        //     glActiveTexture(GL_TEXTURE1);
-        //     glBindTexture(GL_TEXTURE_2D, 0);
-
-        //     glActiveTexture(GL_TEXTURE0);
-        //     glDisable(GL_TEXTURE_CUBE_MAP);
-        //     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-
-        //     glUseProgram(0);
-
-        //     glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-        //     glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_right.viewports[i].clip_range->data);
-        //     VolumeRenderer::ClipRange* d = renderer_right.viewports[i].clip_range->data;
-        //     for(int p = 0; p < viewport_width * viewport_height; p++) {
-        //         d[p].t_far *= 1000;
-        //         d[p].t_front *= 1000;
-        //     }
-        //     glBindTexture(GL_TEXTURE_2D, 0);
-        // }
+    // Set the cubemap for depth buffer.
+    virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far) {
+        loadDepthCubemapRenderer(renderer_left, texDepth_left, near, far);
+        if(total_threads >= 2) {
+            loadDepthCubemapRenderer(renderer_right, texDepth_right, near, far);
+        }
     }
 
     // Upload viewport textures.
@@ -881,6 +844,8 @@ public:
     pthread_t thread_main;
     int total_threads;
     StereoMode stereo_mode;
+
+    int viewport_width, viewport_height;
 
     ConfigParser config;
     void* zmq_context;
