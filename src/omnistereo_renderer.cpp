@@ -192,6 +192,7 @@ public:
 
         // Mark that we have finished initialization.
         initialize_complete = true;
+        printf("RendererThread: %s initialized. vp:%dx%d\n", client_name, viewport_width, viewport_height);
 
         // socket_sub: Subscribe the messages from the main renderer thread.
         void* socket_sub = zmq_socket(zmq_context, ZMQ_SUB);
