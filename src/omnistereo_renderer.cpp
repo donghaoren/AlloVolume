@@ -744,7 +744,9 @@ public:
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, wrap_texture);
 
+            // double tt = (TimeProfiler::Default()->getTime() - 1429829725) * 1000;
             // Draw the stuff.
+            // glClearColor(tt, 0, 0, 0);
             glClear(GL_COLOR_BUFFER_BIT);
 
             glBegin(GL_QUADS);
@@ -755,10 +757,15 @@ public:
             glEnd();
 
             // Read pixels.
-            double t0 = TimeProfiler::Default()->getTime();
+            // double t0 = TimeProfiler::Default()->getTime();
+
             renderer.lock();
             glReadPixels(0, 0, viewport_width, viewport_height, GL_RG, GL_FLOAT, vp.clip_range->data);
-            printf("t:%d vp:%d wrap=%d = %lu\n", renderer.gpu_id, vp_idx, wrap_texture, vp.clip_range->data);
+            renderer.unlock();
+
+            //int idx_middle = viewport_width / 2 + viewport_height / 2 * viewport_width;
+            //printf("t:%d vp:%d wrap=%d = %lu, tt=%f, middle=%f\n", renderer.gpu_id, vp_idx, wrap_texture, vp.clip_range->data, tt, vp.clip_range->data[idx_middle].t_front);
+
             // Write the image to file.
             /*
             fprintf(stderr, "File writing.\n");
@@ -770,11 +777,9 @@ public:
             fprintf(stderr, "File wrote.\n");
             */
 
-            renderer.unlock();
-            double t1 = TimeProfiler::Default()->getTime();
-            int err = glGetError();
-            printf("getTexImage2D: %.3lf ms err=%d\n", (t1 - t0) * 1000, err);
-            break;
+            // double t1 = TimeProfiler::Default()->getTime();
+            // int err = glGetError();
+            // printf("getTexImage2D: %.3lf ms err=%d\n", (t1 - t0) * 1000, err);
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glUseProgram(0);
@@ -787,10 +792,12 @@ public:
         glDepthMask(GL_FALSE);
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_BLEND);
+        glDisable(GL_STENCIL_TEST);
+        glDisable(GL_SCISSOR_TEST);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
         loadDepthCubemapRenderer(renderer_left, texDepth_left, near, far);
-        if(total_threads >= 2 && false) {
+        if(total_threads >= 2) {
             loadDepthCubemapRenderer(renderer_right, texDepth_right, near, far);
         }
         glPopAttrib();
