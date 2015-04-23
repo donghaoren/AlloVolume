@@ -546,6 +546,7 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
     uniform samplerCube depth_cube_map;
     uniform float omni_near;
     uniform float omni_far;
+    uniform float scale_factor;
 
     varying vec2 T;
 
@@ -555,8 +556,18 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         // index into cubemap:
         float zb = textureCube(depth_cube_map, v.xyz).r;
         float depth = omni_far * omni_near / (omni_far + zb * (omni_near - omni_far));
+        vec3 absv = abs(v);
+        if(absv.x >= absv.y && absv.x >= absv.z) {  // x is the biggest.
+            v /= absv.x;
+        } else if(absv.y >= absv.x && absv.y >= absv.z) {
+            v /= absv.y;
+        } else {
+            v /= absv.z;
+        }
+        depth *= length(v);
 
-        gl_FragColor.rgba = vec4(depth, 1000.0, 0.0, 1.0);
+
+        gl_FragColor.rgba = vec4(depth * scale_factor, 1e12, 0.0, 1.0);
     }
 );
 
@@ -719,11 +730,16 @@ public:
         pthread_create(&thread_main, NULL, main_thread_pthread, this);
     }
 
-    void loadDepthCubemapRenderer(GPURenderThread& renderer, unsigned int texDepth, float near, float far) {
+    void loadDepthCubemapRenderer(GPURenderThread& renderer, unsigned int texDepth, float near, float far, float omni_eyesep) {
         // Use the depth cubemap to clip range shader.
         glUseProgram(load_depth_cubemap_program);
         glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
         glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
+        float scale_factor = 1.0;
+        if(renderer.viewports[0].lens->getEyeSeparation() != 0) {
+            scale_factor = fabs(renderer.viewports[0].lens->getEyeSeparation()) / fabs(omni_eyesep);
+        }
+        glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "scale_factor"), scale_factor);
 
         // Bind the framebuffer.
         glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
@@ -786,7 +802,7 @@ public:
     }
 
     // Set the cubemap for depth buffer.
-    virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far) {
+    virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far, float omni_eyesep) {
         glPushAttrib(GL_ALL_ATTRIB_BITS);
 
         glDepthMask(GL_FALSE);
@@ -796,9 +812,9 @@ public:
         glDisable(GL_SCISSOR_TEST);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-        loadDepthCubemapRenderer(renderer_left, texDepth_left, near, far);
+        loadDepthCubemapRenderer(renderer_left, texDepth_left, near, far, omni_eyesep);
         if(total_threads >= 2) {
-            loadDepthCubemapRenderer(renderer_right, texDepth_right, near, far);
+            loadDepthCubemapRenderer(renderer_right, texDepth_right, near, far, omni_eyesep);
         }
         glPopAttrib();
     }

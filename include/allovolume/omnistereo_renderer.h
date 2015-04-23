@@ -71,7 +71,7 @@ public:
     virtual bool isReady() = 0;
 
     // Set the cubemap for depth buffer.
-    virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far) = 0;
+    virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far, float eyesep) = 0;
 
     // Upload viewport textures.
     virtual void uploadTextures() = 0;
