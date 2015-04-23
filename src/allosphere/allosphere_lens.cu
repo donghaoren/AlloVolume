@@ -165,7 +165,7 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, blendWidth, blendHeight, 0, GL_LUMINANCE, GL_FLOAT, blendData);
-
+        glBindTexture(GL_TEXTURE_2D, 0);
         return blend_gltexture;
     }
 
@@ -180,7 +180,7 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, warpWidth, warpHeight, 0, GL_RGBA, GL_FLOAT, warpData);
-
+        glBindTexture(GL_TEXTURE_2D, 0);
         return warp_gltexture;
     }
 
@@ -235,6 +235,7 @@ public:
 
         delete [] data;
 
+        glBindTexture(GL_TEXTURE_2D, 0);
         return blend_texture;
     }
     virtual unsigned int getWrapTexture() {
@@ -267,6 +268,8 @@ public:
         delete [] rays;
 
         lens->setEyeSeparation(es_cached);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
 
         return wrap_texture;
     }

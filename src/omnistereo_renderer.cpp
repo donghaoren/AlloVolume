@@ -125,6 +125,13 @@ public:
     pthread_t thread;
     pthread_mutex_t mutex;
 
+    void lock() {
+        pthread_mutex_lock(&mutex);
+    }
+    void unlock() {
+        pthread_mutex_unlock(&mutex);
+    }
+
     void* zmq_context;
     void* socket_push;
     void* socket_sub;
@@ -367,10 +374,12 @@ public:
             renderer->setImage(vp.image_front.get());
             renderer->setBackImage(vp.image_back.get());
             // Render.
+            lock();
             renderer->render();
+            unlock();
         }
         // Call getPixels to actually download the pixels from the GPU.
-        pthread_mutex_lock(&mutex);
+        lock();
         for(int i = 0; i < slave->num_projections; i++) {
             const ViewportData& vp = viewports[i];
             vp.image_front->setNeedsDownload();
@@ -378,7 +387,7 @@ public:
             vp.image_back->setNeedsDownload();
             vp.image_back->getPixels();
         }
-        pthread_mutex_unlock(&mutex);
+        unlock();
         is_dirty = true;
     }
 
@@ -426,7 +435,7 @@ public:
         if(!initialize_complete) return;
 
         if(is_dirty && !viewports.empty()) {
-            pthread_mutex_lock(&mutex);
+            lock();
             for(int i = 0; i < slave->num_projections; i++) {
                 const ViewportData& vp = viewports[i];
                 glBindTexture(GL_TEXTURE_2D, vp.texture_front);
@@ -436,7 +445,7 @@ public:
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vp.image_back->getWidth(), vp.image_back->getHeight(), 0,
                     GL_RGBA, GL_FLOAT, vp.image_back->getPixels());
             }
-            pthread_mutex_unlock(&mutex);
+            unlock();
             is_dirty = false;
         }
     }
@@ -543,10 +552,10 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         // ray location (calibration space):
         vec3 v = normalize(texture2D(pixel_map, T).rgb);
         // index into cubemap:
-        float zb = textureCube(depth_cube_map, -v.yzx).r;
+        float zb = textureCube(depth_cube_map, v.xyz).r;
         float depth = omni_far * omni_near / (omni_far + zb * (omni_near - omni_far));
 
-        gl_FragColor.rgba = vec4(depth / 1000.0, 1.0, 0.0, 0.0);
+        gl_FragColor.rgba = vec4(depth / 1000.0, 1.0, 0.0, 1.0);
         //gl_FragColor.rgba = vec4(0.4, 0.4, 0.4, 0.2);
     }
 );
@@ -725,67 +734,15 @@ public:
 
             glDisable(GL_DEPTH_TEST);
             glDepthMask(GL_FALSE);
+            glDisable(GL_BLEND);
 
             glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, load_depth_cubemap_render_texture, 0);
 
             // Draw the stuff.
             glViewport(0, 0, viewport_width, viewport_height);
-            glBegin(GL_QUADS);
-            glVertex3f(-1, -1, 0); glTexCoord2f(0, 0);
-            glVertex3f(-1, +1, 0); glTexCoord2f(0, 1);
-            glVertex3f(+1, +1, 0); glTexCoord2f(1, 1);
-            glVertex3f(+1, -1, 0); glTexCoord2f(1, 0);
-            glEnd();
+            glClear(GL_COLOR_BUFFER_BIT);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, 0);
-
-            glActiveTexture(GL_TEXTURE0);
-            glDisable(GL_TEXTURE_CUBE_MAP);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-
-            glUseProgram(0);
-
-            glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_left.viewports[i].clip_range->data);
-            VolumeRenderer::ClipRange* d = renderer_left.viewports[i].clip_range->data;
-            for(int p = 0; p < viewport_width * viewport_height; p++) {
-                d[p].t_far *= 1000;
-                d[p].t_front *= 1000;
-            }
-            glBindTexture(GL_TEXTURE_2D, 0);
-        }
-        if(total_threads == 1) return;
-        for(int i = 0; i < renderer_right.viewports.size(); i++) {
-            if(!renderer_right.initialize_complete) continue;
-            const GPURenderThread::ViewportData& vp = renderer_right.viewports[i];
-            GLuint wrap_texture = vp.lens->getWrapTexture();
-
-            int viewport_width = config.get<int>("allovolume.resolution.width", 960);
-            int viewport_height = config.get<int>("allovolume.resolution.height", 640);
-
-            glUseProgram(load_depth_cubemap_program);
-
-            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
-            glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
-
-            glActiveTexture(GL_TEXTURE1);
-            glEnable(GL_TEXTURE_2D);
-            glBindTexture(GL_TEXTURE_2D, wrap_texture);
-
-            glActiveTexture(GL_TEXTURE0);
-            glEnable(GL_TEXTURE_CUBE_MAP);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth_right);
-
-            glDisable(GL_DEPTH_TEST);
-            glDepthMask(GL_FALSE);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
-
-            // Draw the stuff.
-            glViewport(0, 0, viewport_width, viewport_height);
             glBegin(GL_QUADS);
             glTexCoord2f(0, 0); glVertex3f(-1, -1, 0);
             glTexCoord2f(0, 1); glVertex3f(-1, +1, 0);
@@ -804,15 +761,75 @@ public:
 
             glUseProgram(0);
 
+            glActiveTexture(GL_TEXTURE0);
+            glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_right.viewports[i].clip_range->data);
-            VolumeRenderer::ClipRange* d = renderer_right.viewports[i].clip_range->data;
+            renderer_left.lock();
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, vp.clip_range->data);
+            VolumeRenderer::ClipRange* d = vp.clip_range->data;
             for(int p = 0; p < viewport_width * viewport_height; p++) {
                 d[p].t_far *= 1000;
                 d[p].t_front *= 1000;
             }
+            renderer_left.unlock();
             glBindTexture(GL_TEXTURE_2D, 0);
         }
+        // if(total_threads == 1) return;
+        // for(int i = 0; i < renderer_right.viewports.size(); i++) {
+        //     if(!renderer_right.initialize_complete) continue;
+        //     const GPURenderThread::ViewportData& vp = renderer_right.viewports[i];
+        //     GLuint wrap_texture = vp.lens->getWrapTexture();
+
+        //     int viewport_width = config.get<int>("allovolume.resolution.width", 960);
+        //     int viewport_height = config.get<int>("allovolume.resolution.height", 640);
+
+        //     glUseProgram(load_depth_cubemap_program);
+
+        //     glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
+        //     glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
+
+        //     glActiveTexture(GL_TEXTURE1);
+        //     glEnable(GL_TEXTURE_2D);
+        //     glBindTexture(GL_TEXTURE_2D, wrap_texture);
+
+        //     glActiveTexture(GL_TEXTURE0);
+        //     glEnable(GL_TEXTURE_CUBE_MAP);
+        //     glBindTexture(GL_TEXTURE_CUBE_MAP, texDepth_right);
+
+        //     glDisable(GL_DEPTH_TEST);
+        //     glDepthMask(GL_FALSE);
+
+        //     glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
+
+        //     // Draw the stuff.
+        //     glViewport(0, 0, viewport_width, viewport_height);
+        //     glBegin(GL_QUADS);
+        //     glTexCoord2f(0, 0); glVertex3f(-1, -1, 0);
+        //     glTexCoord2f(0, 1); glVertex3f(-1, +1, 0);
+        //     glTexCoord2f(1, 1); glVertex3f(+1, +1, 0);
+        //     glTexCoord2f(1, 0); glVertex3f(+1, -1, 0);
+        //     glEnd();
+
+        //     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        //     glActiveTexture(GL_TEXTURE1);
+        //     glBindTexture(GL_TEXTURE_2D, 0);
+
+        //     glActiveTexture(GL_TEXTURE0);
+        //     glDisable(GL_TEXTURE_CUBE_MAP);
+        //     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+        //     glUseProgram(0);
+
+        //     glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
+        //     glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, renderer_right.viewports[i].clip_range->data);
+        //     VolumeRenderer::ClipRange* d = renderer_right.viewports[i].clip_range->data;
+        //     for(int p = 0; p < viewport_width * viewport_height; p++) {
+        //         d[p].t_far *= 1000;
+        //         d[p].t_front *= 1000;
+        //     }
+        //     glBindTexture(GL_TEXTURE_2D, 0);
+        // }
     }
 
     // Upload viewport textures.
