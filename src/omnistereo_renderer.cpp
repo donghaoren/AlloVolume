@@ -101,6 +101,10 @@ public:
             image_front.reset(Image::Create(width, height));
             image_back.reset(Image::Create(width, height));
             clip_range.reset(new ClipImageData(width, height));
+            Color* p = image_front->getPixels();
+            for(int i = 0; i < width * height; i++) { p[i] = Color(0, 0, 0, 0); }
+            p = image_back->getPixels();
+            for(int i = 0; i < width * height; i++) { p[i] = Color(0, 0, 0, 0); }
         }
     };
     vector<ViewportData> viewports;
@@ -174,6 +178,8 @@ public:
             viewports[i].lens->setEyeSeparation(eye * 0.065 / 5.00);
             viewports[i].lens->setFocalDistance(1.0);
         }
+
+        is_dirty = true;
 
         // Mark that we have finished initialization.
         initialize_complete = true;
