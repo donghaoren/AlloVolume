@@ -164,6 +164,7 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, blendWidth, blendHeight, 0, GL_LUMINANCE, GL_FLOAT, blendData);
+        glGenerateMipmap(GL_TEXTURE_2D);
 
         return blend_gltexture;
     }
@@ -178,6 +179,7 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, warpWidth, warpHeight, 0, GL_RGBA, GL_FLOAT, warpData);
+        glGenerateMipmap(GL_TEXTURE_2D);
 
         return warp_gltexture;
     }
