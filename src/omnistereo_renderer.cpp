@@ -520,8 +520,6 @@ GLuint compileShaderProgram(const std::string& vertex_code, const std::string& f
         return 0;
     }
 
-    glDetachShader(program, vertex_shader);
-    glDetachShader(program, fragment_shader);
     glDeleteShader(vertex_shader);
     glDeleteShader(fragment_shader);
 
