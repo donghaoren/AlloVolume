@@ -727,6 +727,7 @@ public:
         // Bind the framebuffer.
         glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
         glViewport(0, 0, viewport_width, viewport_height);
 
         glActiveTexture(GL_TEXTURE0);

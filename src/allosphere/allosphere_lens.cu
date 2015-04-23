@@ -260,7 +260,7 @@ public:
         vp.vp_x = 0; vp.vp_y = 0; vp.vp_width = width; vp.vp_height = height;
         lens->getRays(vp, rays);
         for(int i = 0; i < width * height; i++) {
-            data[i] = rays[i].direction;
+            data[i] = Vector(rays[i].direction.y, rays[i].direction.z, rays[i].direction.x);
         }
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, width, height, 0, GL_RGB, GL_FLOAT, data);
 
