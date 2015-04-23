@@ -553,8 +553,7 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         float zb = textureCube(depth_cube_map, v.xyz).r;
         float depth = omni_far * omni_near / (omni_far + zb * (omni_near - omni_far));
 
-        gl_FragColor.rgba = vec4(depth / 1000.0, 1.0, 0.0, 1.0);
-        //gl_FragColor.rgba = vec4(0.4, 0.4, 0.4, 0.2);
+        gl_FragColor.rgba = vec4(depth, 1000.0, 0.0, 1.0);
     }
 );
 
@@ -623,7 +622,7 @@ public:
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, viewport_width, viewport_height, 0,
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, viewport_width, viewport_height, 0,
                     GL_RGBA, GL_FLOAT, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -709,9 +708,9 @@ public:
 
     // Set the cubemap for depth buffer.
     virtual void loadDepthCubemap(unsigned int texDepth_left, unsigned int texDepth_right, float near, float far) {
-        for(int i = 0; i < renderer_left.viewports.size(); i++) {
+        for(int vp_idx = 0; vp_idx < renderer_left.viewports.size(); vp_idx++) {
             if(!renderer_left.initialize_complete) continue;
-            const GPURenderThread::ViewportData& vp = renderer_left.viewports[i];
+            const GPURenderThread::ViewportData& vp = renderer_left.viewports[vp_idx];
             GLuint wrap_texture = vp.lens->getWrapTexture();
 
             int viewport_width = config.get<int>("allovolume.resolution.width", 960);
@@ -752,6 +751,7 @@ public:
 
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, 0);
+            glDisable(GL_TEXTURE_2D);
 
             glActiveTexture(GL_TEXTURE0);
             glDisable(GL_TEXTURE_CUBE_MAP);
@@ -764,13 +764,9 @@ public:
             glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
             renderer_left.lock();
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, vp.clip_range->data);
-            VolumeRenderer::ClipRange* d = vp.clip_range->data;
-            for(int p = 0; p < viewport_width * viewport_height; p++) {
-                d[p].t_far *= 1000;
-                d[p].t_front *= 1000;
-            }
             renderer_left.unlock();
             glBindTexture(GL_TEXTURE_2D, 0);
+            glDisable(GL_TEXTURE_2D);
         }
         // if(total_threads == 1) return;
         // for(int i = 0; i < renderer_right.viewports.size(); i++) {

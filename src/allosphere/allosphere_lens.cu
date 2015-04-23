@@ -178,8 +178,8 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, warpWidth, warpHeight, 0, GL_RGBA, GL_FLOAT, warpData);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, warpWidth, warpHeight, 0, GL_RGBA, GL_FLOAT, 0);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, warpWidth, warpHeight, GL_RGBA, GL_FLOAT, warpData);
         glBindTexture(GL_TEXTURE_2D, 0);
         return warp_gltexture;
     }
@@ -262,7 +262,7 @@ public:
         for(int i = 0; i < width * height; i++) {
             data[i] = rays[i].direction;
         }
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_FLOAT, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, width, height, 0, GL_RGB, GL_FLOAT, data);
 
         delete [] data;
         delete [] rays;
