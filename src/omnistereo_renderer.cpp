@@ -566,7 +566,6 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         }
         depth *= length(v);
 
-
         gl_FragColor.rgba = vec4(depth * scale_factor, 1e12, 0.0, 1.0);
     }
 );
@@ -736,7 +735,7 @@ public:
         glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_near"), near);
         glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "omni_far"), far);
         float scale_factor = 1.0;
-        if(renderer.viewports[0].lens->getEyeSeparation() != 0) {
+        if(omni_eyesep != 0) {
             scale_factor = fabs(renderer.viewports[0].lens->getEyeSeparation()) / fabs(omni_eyesep);
         }
         glUniform1f(glGetUniformLocation(load_depth_cubemap_program, "scale_factor"), scale_factor);
