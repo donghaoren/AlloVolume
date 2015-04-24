@@ -566,7 +566,7 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         }
         depth *= length(v);
 
-        gl_FragColor.rgba = vec4(depth * scale_factor, 1e12, 0.0, 1.0);
+        gl_FragColor.rgba = vec4(omni_near, depth * scale_factor, 1e12, 0.0, 1.0);
     }
 );
 
@@ -644,7 +644,7 @@ public:
         GLuint colorrenderbuffer;
         glGenRenderbuffers(1, &colorrenderbuffer);
         glBindRenderbuffer(GL_RENDERBUFFER, colorrenderbuffer);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_RG32F, viewport_width, viewport_height);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB32F, viewport_width, viewport_height);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, colorrenderbuffer);
 
         // GLuint depthrenderbuffer;
@@ -775,7 +775,7 @@ public:
             // double t0 = TimeProfiler::Default()->getTime();
 
             renderer.lock();
-            glReadPixels(0, 0, viewport_width, viewport_height, GL_RG, GL_FLOAT, vp.clip_range->data);
+            glReadPixels(0, 0, viewport_width, viewport_height, GL_RGB, GL_FLOAT, vp.clip_range->data);
             renderer.unlock();
 
             //int idx_middle = viewport_width / 2 + viewport_height / 2 * viewport_width;

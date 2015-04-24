@@ -422,8 +422,12 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     register float k_front = FLT_MAX;
     register float k_far = FLT_MAX;
     if(p.clip_ranges) {
+        float k_near = p.clip_ranges[idx].t_near;
         k_front = p.clip_ranges[idx].t_front;
         k_far = p.clip_ranges[idx].t_far;
+        pos += d * k_near;
+        k_front -= k_near;
+        k_far -= k_near;
     }
 
     // Initial color (background color).

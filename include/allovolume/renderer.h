@@ -119,7 +119,9 @@ public:
     };
 
     struct ClipRange {
-        float t_front, t_far;
+        // Front image: t_near - t_front
+        // Back image = t_front - t_far
+        float t_near, t_front, t_far;
     };
 
     // Set volume.
