@@ -74,8 +74,9 @@ public:
             size = width * height;
             data = new VolumeRenderer::ClipRange[width * height];
             for(int i = 0; i < width * height; i++) {
-                data[i].t_far = FLT_MAX;
+                data[i].t_near = 0;
                 data[i].t_front = FLT_MAX;
+                data[i].t_far = FLT_MAX;
             }
         }
         ~ClipImageData() {
