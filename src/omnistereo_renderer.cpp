@@ -566,7 +566,7 @@ const char* kGLSL_loadDepthCubemap_fragment = STRINGIFY(
         }
         depth *= length(v);
 
-        gl_FragColor.rgba = vec4(omni_near, depth * scale_factor, 1e12, 0.0, 1.0);
+        gl_FragColor.rgba = vec4(omni_near * scale_factor, depth * scale_factor, omni_far * scale_factor, 1.0);
     }
 );
 
@@ -811,9 +811,9 @@ public:
         glDisable(GL_SCISSOR_TEST);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-        loadDepthCubemapRenderer(renderer_left, texDepth_left, near, far, omni_eyesep);
+        loadDepthCubemapRenderer(renderer_left, texDepth_right, near, far, omni_eyesep);
         if(total_threads >= 2) {
-            loadDepthCubemapRenderer(renderer_right, texDepth_right, near, far, omni_eyesep);
+            loadDepthCubemapRenderer(renderer_right, texDepth_left, near, far, omni_eyesep);
         }
         glPopAttrib();
     }
