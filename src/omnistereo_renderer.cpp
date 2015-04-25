@@ -812,9 +812,9 @@ public:
         glDisable(GL_SCISSOR_TEST);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-        loadDepthCubemapRenderer(renderer_left, texDepth_right, near, far, omni_eyesep);
+        loadDepthCubemapRenderer(renderer_left, texDepth_left, near, far, omni_eyesep);
         if(total_threads >= 2) {
-            loadDepthCubemapRenderer(renderer_right, texDepth_left, near, far, omni_eyesep);
+            loadDepthCubemapRenderer(renderer_right, texDepth_right, near, far, omni_eyesep);
         }
         glPopAttrib();
     }
