@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
         printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
     }
     {
-        renderer->setInternalFormat(VolumeRenderer::kUInt16);
+        renderer->setInternalFormat(VolumeRenderer::kUInt8);
         double ts = 0;
         for(int i = 0; i < trails; i++) {
             time_measure.begin("Render");
