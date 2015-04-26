@@ -115,6 +115,8 @@ int main(int argc, char* argv[]) {
     }
     TransferFunction::ParseLayers(tf, 1024, preset.transfer_function().layers().c_str());
 
+    //renderer->setInternalFormat(VolumeRenderer::kUInt8);
+
     renderer->setVolume(volume);
     renderer->setLens(lens);
     renderer->setTransferFunction(tf);
@@ -122,14 +124,28 @@ int main(int argc, char* argv[]) {
                         !parameters["height"].IsDefined() ? 400 : parameters["height"].as<int>());
     renderer->setImage(img);
     renderer->setBackImage(img_back);
-    int trails = 1;
-    double ts = 0;
-    for(int i = 0; i < trails; i++) {
-        time_measure.begin("Render");
-        renderer->render();
-        ts += time_measure.done();
+
+    int trails = 5;
+    {
+        renderer->setInternalFormat(VolumeRenderer::kFloat32);
+        double ts = 0;
+        for(int i = 0; i < trails; i++) {
+            time_measure.begin("Render");
+            renderer->render();
+            ts += time_measure.done();
+        }
+        printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
     }
-    printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
+    {
+        renderer->setInternalFormat(VolumeRenderer::kUInt16);
+        double ts = 0;
+        for(int i = 0; i < trails; i++) {
+            time_measure.begin("Render");
+            renderer->render();
+            ts += time_measure.done();
+        }
+        printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
+    }
     img->setNeedsDownload();
     img_back->setNeedsDownload();
     printf("Saving image.\n");

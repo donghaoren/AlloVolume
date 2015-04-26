@@ -118,6 +118,12 @@ public:
         kPreIntegrationMethod = 3
     };
 
+    enum InternalFormat {
+        kFloat32 = 0,
+        kUInt16 = 1,
+        kUInt8 = 2
+    };
+
     struct ClipRange {
         // Front image: t_near - t_front
         // Back image = t_front - t_far
@@ -126,6 +132,9 @@ public:
 
     // Set volume.
     virtual void setVolume(VolumeBlocks* volume) = 0;
+    // Internal format. Default: kFloat32.
+    virtual void setInternalFormat(InternalFormat format) = 0;
+    virtual InternalFormat getInternalFormat() = 0;
     // This should be approximately the size of your volume.
     virtual void setBlendingCoefficient(float value) = 0;
     virtual float getBlendingCoefficient() = 0;

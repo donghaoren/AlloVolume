@@ -18,6 +18,16 @@ using namespace std;
 
 namespace allovolume {
 
+template<typename DataType> inline __device__ DataType datatype_fromfloat(float t);
+template<> inline __device__ float datatype_fromfloat<float>(float t) { return t; }
+template<> inline __device__ unsigned short datatype_fromfloat<unsigned short>(float t) { return (unsigned short)(t * 65535.0f); }
+template<> inline __device__ unsigned char datatype_fromfloat<unsigned char>(float t) { return (unsigned char)(t * 255.0f); }
+
+template<typename DataType> inline __device__ float datatype_rescale(float t);
+template<> inline __device__ float datatype_rescale<float>(float t) { return t; }
+template<> inline __device__ float datatype_rescale<unsigned short>(float t) { return t / 65535.0f; }
+template<> inline __device__ float datatype_rescale<unsigned char>(float t) { return t / 255.0f; }
+
 __device__
 inline float interp(float a, float b, float t) {
     return fmaf(t, b - a, a);
@@ -128,14 +138,15 @@ texture<float, 3, cudaReadModeElementType> volume_texture;
 texture<float4, 1, cudaReadModeElementType> tf_texture;
 texture<float4, 2, cudaReadModeElementType> tf_texture_preintergrated;
 
+template<typename DataType>
 struct block_interpolate_t {
-    const float* data;
+    const DataType* data;
     float sx, sy, sz, tx, ty, tz;
     int cxsize, cysize, czsize;
     int ystride, zstride;
 
     __device__
-    inline block_interpolate_t(const BlockDescription& block, const float* data_) {
+    inline block_interpolate_t(const BlockDescription& block, const DataType* data_) {
         data = data_;
         sx = (block.xsize - block.ghost_count * 2.0f) / (block.max.x - block.min.x);
         sy = (block.ysize - block.ghost_count * 2.0f) / (block.max.y - block.min.y);
@@ -166,15 +177,24 @@ struct block_interpolate_t {
 
         int idx = ix + ystride * iy + zstride * iz;
 
-        float t00 = interp(data[idx], data[idx + zstride], tz);
-        float t01 = interp(data[idx + ystride], data[idx + ystride + zstride], tz);
+        float t000 = data[idx];
+        float t100 = data[idx + 1];
+        float t001 = data[idx + zstride];
+        float t101 = data[idx + 1 + zstride];
+        float t010 = data[idx + ystride];
+        float t110 = data[idx + 1 + ystride];
+        float t011 = data[idx + ystride + zstride];
+        float t111 = data[idx + 1 + ystride + zstride];
+
+        float t00 = interp(t000, t001, tz);
+        float t01 = interp(t010, t011, tz);
         float t0 = interp(t00, t01, ty);
 
-        float t10 = interp(data[idx + 1], data[idx + 1 + zstride], tz);
-        float t11 = interp(data[idx + 1 + ystride], data[idx + 1 + ystride + zstride], tz);
+        float t10 = interp(t100, t101, tz);
+        float t11 = interp(t110, t111, tz);
         float t1 = interp(t10, t11, ty);
 
-        return interp(t0, t1, tx);
+        return datatype_rescale<DataType>(interp(t0, t1, tx));
     }
 };
 
@@ -196,8 +216,9 @@ struct ray_marching_kernel_blockinfo_t {
 };
 
 
+template<typename DataType>
 __global__
-void preprocess_data_kernel(float* data, float* data_processed, size_t data_size, TransferFunction::Scale scale, float min, float max) {
+void preprocess_data_kernel(float* data, DataType* data_processed, size_t data_size, TransferFunction::Scale scale, float min, float max) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= data_size) return;
     float value = data[idx];
@@ -208,8 +229,9 @@ void preprocess_data_kernel(float* data, float* data_processed, size_t data_size
     }
 
     value = (value - min) / (max - min);
+    value = clamp01f(value);
 
-    data_processed[idx] = value;
+    data_processed[idx] = datatype_fromfloat<DataType>(value);
 }
 
 __device__
@@ -295,6 +317,7 @@ inline int kd_tree_block_intersection(
     return blockinfos_count;
 }
 
+template<typename DataType>
 __global__
 void ray_marching_kernel_basic(ray_marching_parameters_t p) {
     // Pixel index.
@@ -379,7 +402,7 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
             float step_size = distance / steps;
 
             // Interpolate context.
-            block_interpolate_t block_access(block, p.data + block.offset);
+            block_interpolate_t<DataType> block_access(block, (DataType*)p.data + block.offset);
 
             // Blending with basic alpha compositing.
             for(int i = steps - 1; i >= 0; i--) {
@@ -407,6 +430,7 @@ void ray_marching_kernel_basic(ray_marching_parameters_t p) {
     p.pixels[idx] = color;
 }
 
+template<typename DataType>
 __global__
 void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     // Pixel index.
@@ -509,7 +533,7 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
             float mindiff = fmaxf(3.0 / tf_size, pts_c);
 
             // Interpolate context.
-            block_interpolate_t block_access(block, p.data + block.offset);
+            block_interpolate_t<DataType> block_access(block, (DataType*)p.data + block.offset);
             float val_prev = block_access.interpolate(pos + d * (kin + step_size * (float)steps));
             for(int i = steps - 1; i >= 0; i--) {
                 // Access the volume.
@@ -564,103 +588,13 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     }
 }
 
-__global__
-void ray_marching_kernel_rk4(ray_marching_parameters_t p) {
-    // Pixel index.
-    int px = blockIdx.x * blockDim.x + threadIdx.x;
-    int py = blockIdx.y * blockDim.y + threadIdx.y;
-    if(px >= p.width || py >= p.height) return;
-    register int idx = py * p.width + px;
-
-    // Ray information.
-    Lens::Ray ray = p.rays[idx];
-    register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
-    register Vector d = p.pose.rotation.rotate(ray.direction);
-
-    // Initial color (background color).
-    register Color color = p.bg_color;
-
-    // Global ray information.
-    float g_kin, g_kout;
-    intersectBox(pos, d, p.bbox_min, p.bbox_max, &g_kin, &g_kout);
-    if(g_kout < 0) {
-        p.pixels[idx] = color;
-        return;
-    }
-    if(g_kin < 0) g_kin = 0;
-
-    // Block intersection.
-    ray_marching_kernel_blockinfo_t blockinfos[128];
-    traverse_stack_t stack[64];
-    int blockinfos_count = kd_tree_block_intersection(pos, d, g_kin, g_kout, g_kin, g_kout, p.kd_tree, p.kd_tree_root, p.blocks, blockinfos, stack);
-
-    // Simple solution: fixed step size.
-    float kmax = g_kout;
-    float L = p.blend_coefficient;
-
-    // Render blocks.
-    for(int cursor = 0; cursor < blockinfos_count; cursor++) {
-        BlockDescription block = p.blocks[blockinfos[cursor].index];
-        float kin = blockinfos[cursor].kin;
-        float kout = blockinfos[cursor].kout;
-        if(kout > kmax) kout = kmax;
-        if(kin < kout) {
-            // Render this block.
-            float distance = kout - kin;
-            float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            int steps = ceil(distance / voxel_size / p.step_size_multiplier);
-            if(steps > block.xsize * 30) steps = block.xsize * 30;
-            if(steps < 2) steps = 2;
-            float step_size = distance / steps;
-
-            // Interpolate context.
-            block_interpolate_t block_access(block, p.data + block.offset);
-
-            // Blending with RK4.
-            Color c0 = tf_tex_get(block_access.interpolate(pos + d * kout));
-            float c0s = c0.a / L;
-            c0.a = 1.0f;
-            for(int i = steps - 1; i >= 0; i--) {
-                Color cm = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * ((float)i + 0.5f))));
-                float cms = cm.a / L;
-                cm.a = 1.0f;
-                Color c1 = tf_tex_get(block_access.interpolate(pos + d * (kin + step_size * i)));
-                float c1s = c1.a / L;
-                c1.a = 1.0f;
-                // Runge Kutta Order 4 method.
-                // y'(t, y) = (y - c(t)) * ln(1 - alpha(t)) / L
-                //   y has premultiplied alpha.
-                //   c has non-premultiplied alpha.
-                Color k1 = (color - c0) * c0s;
-                Color k2 = (color + k1 * (step_size * 0.5f) - cm) * cms;
-                Color k3 = (color + k2 * (step_size * 0.5f) - cm) * cms;
-                Color k4 = (color + k3 * (step_size) - c1) * c1s;
-                color = color + (k1 + (k2 + k3) * 2.0f + k4) * (step_size / 6.0f);
-
-                c0 = c1;
-                c0s = c1s;
-            }
-            kmax = kin;
-        }
-    }
-
-    // Un-premultiply alpha channel.
-    if(color.a != 0) {
-        color.r /= color.a;
-        color.g /= color.a;
-        color.b /= color.a;
-    } else color = Color(0, 0, 0, 0);
-
-    // Color output.
-    p.pixels[idx] = color;
-}
-
+template<typename DataType>
 struct render_dxdt_t {
-    block_interpolate_t& block;
+    block_interpolate_t<DataType>& block;
     Vector pos, d;
     double kin, kout;
     double L;
-    __device__ render_dxdt_t(block_interpolate_t& block_, Vector pos_, Vector d_, double kin_, double kout_, double L_)
+    __device__ render_dxdt_t(block_interpolate_t<DataType>& block_, Vector pos_, Vector d_, double kin_, double kout_, double L_)
     : block(block_), pos(pos_), d(d_), kin(kin_), kout(kout_), L(L_) { }
 
     __device__ void operator() (double x, Color y, Color& dy) {
@@ -678,6 +612,7 @@ struct color_norm_t {
     }
 };
 
+template<typename DataType>
 __global__
 void ray_marching_kernel_rkf_double(ray_marching_parameters_t p) {
     // Pixel index.
@@ -722,8 +657,8 @@ void ray_marching_kernel_rkf_double(ray_marching_parameters_t p) {
             // Render this block.
             float distance = kout - kin;
             float voxel_size = (block.max.x - block.min.x) / block.xsize; // assume voxels are cubes.
-            block_interpolate_t block_access(block, p.data + block.offset);
-            render_dxdt_t dxdt(block_access, pos, d, kin, kout, L);
+            block_interpolate_t<DataType> block_access(block, (DataType*)p.data + block.offset);
+            render_dxdt_t<DataType> dxdt(block_access, pos, d, kin, kout, L);
             color_norm_t color_norm;
             Color new_color;
             RungeKuttaFehlberg(0.0f, distance, color, dxdt, color_norm, 1e-6f, voxel_size / 64.0f, voxel_size / 2.0f, new_color);
@@ -778,6 +713,7 @@ public:
         blend_coefficient(1.0),
         step_size_multiplier(1.0),
         raycasting_method(kRK4Method),
+        internal_format(kFloat32),
         bbox_min(-1e20, -1e20, -1e20),
         bbox_max(1e20, 1e20, 1e20),
         bg_color(0, 0, 0, 0)
@@ -823,6 +759,14 @@ public:
         buildKDTree();
     }
 
+    virtual void setInternalFormat(InternalFormat format) {
+        internal_format = format;
+    }
+
+    virtual InternalFormat getInternalFormat() {
+        return internal_format;
+    }
+
     void preprocessVolume() {
         float tf_min, tf_max;
         tf->getDomain(tf_min, tf_max);
@@ -833,7 +777,17 @@ public:
             tf_max = log(tf_max);
         }
         // Preprocess the volume.
-        preprocess_data_kernel<<<diviur(data.size, 64), 64>>>(data.gpu, data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+        switch(internal_format) {
+            case kFloat32: {
+                preprocess_data_kernel<float><<<diviur(data.size, 64), 64>>>(data.gpu, (float*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+            } break;
+            case kUInt16: {
+                preprocess_data_kernel<unsigned short><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned short*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+            } break;
+            case kUInt8: {
+                preprocess_data_kernel<unsigned char><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned char*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+            } break;
+        }
     }
 
     bool tf_preint_preprocessed;
@@ -975,22 +929,47 @@ public:
 
         if(raycasting_method == kBasicBlendingMethod) {
             bindTransferFunctionTexture();
-            ray_marching_kernel_basic<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+            switch(internal_format) {
+                case kFloat32: {
+                    ray_marching_kernel_basic<float><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+                case kUInt16: {
+                    ray_marching_kernel_basic<unsigned short><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+                case kUInt8: {
+                    ray_marching_kernel_basic<unsigned char><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+            }
             unbindTransferFunctionTexture();
         }
         if(raycasting_method == kPreIntegrationMethod) {
             bindTransferFunctionTexture2D();
-            ray_marching_kernel_preintegration<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+            switch(internal_format) {
+                case kFloat32: {
+                    ray_marching_kernel_preintegration<float><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+                case kUInt16: {
+                    ray_marching_kernel_preintegration<unsigned short><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+                case kUInt8: {
+                    ray_marching_kernel_preintegration<unsigned char><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+            }
             unbindTransferFunctionTexture2D();
-        }
-        if(raycasting_method == kRK4Method) {
-            bindTransferFunctionTexture();
-            ray_marching_kernel_rk4<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-            unbindTransferFunctionTexture();
         }
         if(raycasting_method == kAdaptiveRKFMethod) {
             bindTransferFunctionTexture();
-            ray_marching_kernel_rkf_double<<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+            switch(internal_format) {
+                case kFloat32: {
+                    ray_marching_kernel_rkf_double<float><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+                case kUInt16: {
+                    ray_marching_kernel_rkf_double<unsigned short><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+                case kUInt8: {
+                    ray_marching_kernel_rkf_double<unsigned char><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                } break;
+            }
             unbindTransferFunctionTexture();
         }
         cudaThreadSynchronize();
@@ -1013,6 +992,7 @@ public:
     Color bg_color;
     float blend_coefficient;
     float step_size_multiplier;
+    InternalFormat internal_format;
     RaycastingMethod raycasting_method;
     // Global bounding box:
     Vector bbox_min, bbox_max;
