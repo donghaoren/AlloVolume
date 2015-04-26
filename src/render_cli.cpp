@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
     }
     TransferFunction::ParseLayers(tf, 1024, preset.transfer_function().layers().c_str());
 
-    //renderer->setInternalFormat(VolumeRenderer::kUInt8);
+    renderer->setInternalFormat(VolumeRenderer::kUInt8);
 
     renderer->setVolume(volume);
     renderer->setLens(lens);
