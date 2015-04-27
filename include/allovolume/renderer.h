@@ -132,6 +132,9 @@ public:
 
     // Set volume.
     virtual void setVolume(VolumeBlocks* volume) = 0;
+    // Enable z-indexing (aka, Morton Ordering). Around 20% performance gain, may use more memory.
+    virtual void setEnableZIndex(bool enabled) = 0;
+    virtual bool getEnableZIndex() = 0;
     // Internal format. Default: kFloat32.
     virtual void setInternalFormat(InternalFormat format) = 0;
     virtual InternalFormat getInternalFormat() = 0;

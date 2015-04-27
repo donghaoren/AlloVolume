@@ -59,6 +59,14 @@ namespace allovolume {
                 gpu = cudaAllocate<T>(capacity);
             }
         }
+        template<typename T1>
+        void allocate_type(size_t size_) {
+            size_t T1_size = sizeof(T1) * size_;
+            size_t Tcount = T1_size / sizeof(T);
+            if(T1_size % sizeof(T) != 0) Tcount += 1;
+            reserve(Tcount);
+            size = Tcount;
+        }
         void allocate(size_t size_) {
             reserve(size_);
             size = size_;

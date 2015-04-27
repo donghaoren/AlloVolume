@@ -332,7 +332,7 @@ void preprocess_data_kernel(float* data, DataType* data_processed, size_t data_s
 
 template<typename DataType>
 __global__
-void preprocess_data_kernel_morton(float* data, DataType* data_processed, size_t data_size, int xsize, int ysize, int zsize, TransferFunction::Scale scale, float min, float max) {
+void preprocess_data_kernel_morton(float* data, DataType* data_processed, size_t data_size, int xsize, int ysize, int zsize, int block_size_morton, TransferFunction::Scale scale, float min, float max) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= data_size) return;
     float value = data[idx];
@@ -354,7 +354,7 @@ void preprocess_data_kernel_morton(float* data, DataType* data_processed, size_t
     int iy = idx % ysize;
     int iz = idx / ysize;
 
-    data_processed[offset * block_size + morton_encode_10bits(ix, iy, iz)] = datatype_fromfloat<DataType>(value);
+    data_processed[offset * block_size_morton + morton_encode_10bits(ix, iy, iz)] = datatype_fromfloat<DataType>(value);
 }
 
 __device__
@@ -837,6 +837,7 @@ public:
         step_size_multiplier(1.0),
         raycasting_method(kRK4Method),
         internal_format(kFloat32),
+        enable_morton_ordering(false),
         bbox_min(-1e20, -1e20, -1e20),
         bbox_max(1e20, 1e20, 1e20),
         bg_color(0, 0, 0, 0)
@@ -872,7 +873,6 @@ public:
         // Copy volume data.
         block_count = volume->getBlockCount();
         data.allocate(volume->getDataSize());
-        data_processed.allocate(volume->getDataSize());
         data.upload(volume->getData());
         blocks.allocate(block_count);
         for(int i = 0; i < block_count; i++) {
@@ -890,6 +890,13 @@ public:
         return internal_format;
     }
 
+    virtual void setEnableZIndex(bool enabled) {
+        enable_morton_ordering = enabled;
+    }
+    virtual bool getEnableZIndex() {
+        return enable_morton_ordering;
+    }
+
     void preprocessVolume() {
         float tf_min, tf_max;
         tf->getDomain(tf_min, tf_max);
@@ -899,23 +906,58 @@ public:
             tf_min = log(tf_min);
             tf_max = log(tf_max);
         }
-        // Preprocess the volume.
-        int xsize = blocks[0].xsize;
-        int ysize = blocks[0].ysize;
-        int zsize = blocks[0].zsize;
-        int power_of_2_size = next_power_of_2(max(max(xsize, ysize), zsize));
+        if(enable_morton_ordering) {
+            blocks_morton.allocate(block_count);
+            int block_size_morton = 0;
+            int xsize_original = blocks[0].xsize;
+            int ysize_original = blocks[0].ysize;
+            int zsize_original = blocks[0].zsize;
+            for(int i = 0; i < block_count; i++) {
+                // Preprocess the volume.
+                int xsize = blocks[i].xsize;
+                int ysize = blocks[i].ysize;
+                int zsize = blocks[i].zsize;
+                int power_of_2_size = next_power_of_2(max(max(xsize, ysize), zsize));
+                block_size_morton = max(block_size_morton, power_of_2_size * power_of_2_size * power_of_2_size);
+                blocks_morton[i] = blocks[i];
+            }
+            for(int i = 0; i < block_count; i++) {
+                blocks_morton[i].offset = i * block_size_morton;
+            }
 
-        data_processed.allocate(power_of_2_size * power_of_2_size * power_of_2_size);
-        switch(internal_format) {
-            case kFloat32: {
-                preprocess_data_kernel_morton<float><<<diviur(data.size, 64), 64>>>(data.gpu, (float*)data_processed.gpu, data.size, xsize, ysize, zsize, tf->getScale(), tf_min, tf_max);
-            } break;
-            case kUInt16: {
-                preprocess_data_kernel_morton<unsigned short><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned short*)data_processed.gpu, data.size, xsize, ysize, zsize, tf->getScale(), tf_min, tf_max);
-            } break;
-            case kUInt8: {
-                preprocess_data_kernel_morton<unsigned char><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned char*)data_processed.gpu, data.size, xsize, ysize, zsize, tf->getScale(), tf_min, tf_max);
-            } break;
+            blocks_morton.upload();
+
+            data_processed.allocate(block_size_morton * block_count);
+
+            switch(internal_format) {
+                case kFloat32: {
+                    data_processed.allocate_type<float>(block_size_morton * block_count);
+                    preprocess_data_kernel_morton<float><<<diviur(data.size, 64), 64>>>(data.gpu, (float*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                } break;
+                case kUInt16: {
+                    data_processed.allocate_type<unsigned short>(block_size_morton * block_count);
+                    preprocess_data_kernel_morton<unsigned short><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned short*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                } break;
+                case kUInt8: {
+                    data_processed.allocate_type<unsigned char>(block_size_morton * block_count);
+                    preprocess_data_kernel_morton<unsigned char><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned char*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                } break;
+            }
+        } else {
+            switch(internal_format) {
+                case kFloat32: {
+                    data_processed.allocate_type<float>(data.size);
+                    preprocess_data_kernel<float><<<diviur(data.size, 64), 64>>>(data.gpu, (float*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                } break;
+                case kUInt16: {
+                    data_processed.allocate_type<unsigned short>(data.size);
+                    preprocess_data_kernel<unsigned short><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned short*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                } break;
+                case kUInt8: {
+                    data_processed.allocate_type<unsigned char>(data.size);
+                    preprocess_data_kernel<unsigned char><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned char*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                } break;
+            }
         }
     }
 
@@ -1032,7 +1074,11 @@ public:
         pms.pixels = image ? image->getPixelsGPU() : NULL;
         pms.pixels_back = image_back ? image_back->getPixelsGPU() : NULL;
         pms.clip_ranges = clip_ranges_gpu;
-        pms.blocks = blocks.gpu;
+        if(enable_morton_ordering) {
+            pms.blocks = blocks_morton.gpu;
+        } else {
+            pms.blocks = blocks.gpu;
+        }
         pms.kd_tree = kd_tree.gpu;
         pms.kd_tree_root = kd_tree_root;
         pms.data = data_processed.gpu;
@@ -1055,80 +1101,101 @@ public:
 
         int blockdim_x = 8; // 8x8 is the optimal block size.
         int blockdim_y = 8;
-
-        if(raycasting_method == kBasicBlendingMethod) {
-            bindTransferFunctionTexture();
-            switch(internal_format) {
-                case kFloat32: {
-                    ray_marching_kernel_basic<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
-                case kUInt16: {
-                    ray_marching_kernel_basic<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
-                case kUInt8: {
-                    ray_marching_kernel_basic<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
+        if(enable_morton_ordering) {
+            if(raycasting_method == kBasicBlendingMethod) {
+                bindTransferFunctionTexture();
+                switch(internal_format) {
+                    case kFloat32: {
+                        ray_marching_kernel_basic<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt16: {
+                        ray_marching_kernel_basic<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt8: {
+                        ray_marching_kernel_basic<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                }
+                unbindTransferFunctionTexture();
             }
-            unbindTransferFunctionTexture();
-        }
-        if(raycasting_method == kPreIntegrationMethod) {
-            bindTransferFunctionTexture2D();
-            switch(internal_format) {
-                case kFloat32: {
-                    ray_marching_kernel_preintegration<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
-                case kUInt16: {
-                    ray_marching_kernel_preintegration<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
-                case kUInt8: {
-                    ray_marching_kernel_preintegration<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
+            if(raycasting_method == kPreIntegrationMethod) {
+                bindTransferFunctionTexture2D();
+                switch(internal_format) {
+                    case kFloat32: {
+                        ray_marching_kernel_preintegration<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt16: {
+                        ray_marching_kernel_preintegration<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt8: {
+                        ray_marching_kernel_preintegration<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                }
+                unbindTransferFunctionTexture2D();
             }
-            unbindTransferFunctionTexture2D();
-        }
-        if(raycasting_method == kAdaptiveRKFMethod) {
-            bindTransferFunctionTexture();
-            switch(internal_format) {
-                case kFloat32: {
-                    ray_marching_kernel_rkf_double<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
-                case kUInt16: {
-                    ray_marching_kernel_rkf_double<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
-                case kUInt8: {
-                    ray_marching_kernel_rkf_double<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
-                } break;
+            if(raycasting_method == kAdaptiveRKFMethod) {
+                bindTransferFunctionTexture();
+                switch(internal_format) {
+                    case kFloat32: {
+                        ray_marching_kernel_rkf_double<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt16: {
+                        ray_marching_kernel_rkf_double<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt8: {
+                        ray_marching_kernel_rkf_double<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                }
+                unbindTransferFunctionTexture();
             }
-            unbindTransferFunctionTexture();
+        } else {
+            if(raycasting_method == kBasicBlendingMethod) {
+                bindTransferFunctionTexture();
+                switch(internal_format) {
+                    case kFloat32: {
+                        ray_marching_kernel_basic<float, block_interpolate_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt16: {
+                        ray_marching_kernel_basic<unsigned short, block_interpolate_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt8: {
+                        ray_marching_kernel_basic<unsigned char, block_interpolate_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                }
+                unbindTransferFunctionTexture();
+            }
+            if(raycasting_method == kPreIntegrationMethod) {
+                bindTransferFunctionTexture2D();
+                switch(internal_format) {
+                    case kFloat32: {
+                        ray_marching_kernel_preintegration<float, block_interpolate_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt16: {
+                        ray_marching_kernel_preintegration<unsigned short, block_interpolate_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt8: {
+                        ray_marching_kernel_preintegration<unsigned char, block_interpolate_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                }
+                unbindTransferFunctionTexture2D();
+            }
+            if(raycasting_method == kAdaptiveRKFMethod) {
+                bindTransferFunctionTexture();
+                switch(internal_format) {
+                    case kFloat32: {
+                        ray_marching_kernel_rkf_double<float, block_interpolate_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt16: {
+                        ray_marching_kernel_rkf_double<unsigned short, block_interpolate_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                    case kUInt8: {
+                        ray_marching_kernel_rkf_double<unsigned char, block_interpolate_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                    } break;
+                }
+                unbindTransferFunctionTexture();
+            }
         }
         cudaThreadSynchronize();
     }
-
-    // Memory regions:
-    MirroredMemory<BlockDescription> blocks;
-    MirroredMemory<float> data, data_processed;
-    MirroredMemory<Lens::Ray> rays;
-    MirroredMemory<ClipRange> clip_ranges;
-    ClipRange* clip_ranges_cpu;
-
-    int block_count;
-    TransferFunction* tf;
-    Lens* lens;
-    Image* image;
-    Image* image_back;
-
-    // Rendering parameters:
-    Color bg_color;
-    float blend_coefficient;
-    float step_size_multiplier;
-    InternalFormat internal_format;
-    RaycastingMethod raycasting_method;
-    // Global bounding box:
-    Vector bbox_min, bbox_max;
-    // Pose:
-    Pose pose;
-
-    cudaChannelFormatDesc floatChannelDesc;
 
     void uploadTransferFunctionTexture() {
         cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
@@ -1160,9 +1227,6 @@ public:
         tf_texture.addressMode[0] = cudaAddressModeClamp;
         tf_texture.addressMode[1] = cudaAddressModeClamp;
     }
-
-    MirroredMemory<float> preint_yt;
-    MirroredMemory<Color> preint_tf, preint_table;
 
     void uploadTransferFunctionPreintegratedGPU() {
         cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
@@ -1313,6 +1377,36 @@ public:
 
         delete [] blockids;
     }
+
+    // Memory regions:
+    MirroredMemory<BlockDescription> blocks, blocks_morton;
+    MirroredMemory<float> data, data_processed;
+    MirroredMemory<Lens::Ray> rays;
+    MirroredMemory<ClipRange> clip_ranges;
+    ClipRange* clip_ranges_cpu;
+
+    int block_count;
+    TransferFunction* tf;
+    Lens* lens;
+    Image* image;
+    Image* image_back;
+
+    // Rendering parameters:
+    Color bg_color;
+    float blend_coefficient;
+    float step_size_multiplier;
+    InternalFormat internal_format;
+    bool enable_morton_ordering;
+    RaycastingMethod raycasting_method;
+    // Global bounding box:
+    Vector bbox_min, bbox_max;
+    // Pose:
+    Pose pose;
+
+    cudaChannelFormatDesc floatChannelDesc;
+
+    MirroredMemory<float> preint_yt;
+    MirroredMemory<Color> preint_tf, preint_table;
 };
 
 VolumeRenderer* VolumeRenderer::CreateGPU() {

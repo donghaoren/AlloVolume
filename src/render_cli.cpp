@@ -127,24 +127,24 @@ int main(int argc, char* argv[]) {
 
     int trails = 5;
     {
-        renderer->setInternalFormat(VolumeRenderer::kFloat32);
+        renderer->setEnableZIndex(false);
         double ts = 0;
         for(int i = 0; i < trails; i++) {
             time_measure.begin("Render");
             renderer->render();
             ts += time_measure.done();
         }
-        printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
+        printf("Average Render Time (UInt8, no z-index): %.3lf ms\n", ts * 1000 / trails);
     }
     {
-        renderer->setInternalFormat(VolumeRenderer::kUInt8);
+        renderer->setEnableZIndex(true);
         double ts = 0;
         for(int i = 0; i < trails; i++) {
             time_measure.begin("Render");
             renderer->render();
             ts += time_measure.done();
         }
-        printf("Average Render Time: %.3lf ms\n", ts * 1000 / trails);
+        printf("Average Render Time (UInt8, no z-index): %.3lf ms\n", ts * 1000 / trails);
     }
     img->setNeedsDownload();
     img_back->setNeedsDownload();
