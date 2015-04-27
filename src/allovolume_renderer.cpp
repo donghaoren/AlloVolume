@@ -153,6 +153,7 @@ public:
                 case protocol::RendererBroadcast_Type_SetRendererParameters: {
                     renderer->setBlendingCoefficient(msg.renderer_parameters().blending_coefficient());
                     renderer->setStepSizeMultiplier(msg.renderer_parameters().step_size());
+                    renderer->setEnableZIndex(msg.renderer_parameters().enable_z_index());
                     switch(msg.renderer_parameters().method()) {
                         case protocol::RendererParameters_RenderingMethod_BasicBlending: {
                             renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
@@ -162,6 +163,17 @@ public:
                         } break;
                         case protocol::RendererParameters_RenderingMethod_PreIntegration: {
                             renderer->setRaycastingMethod(VolumeRenderer::kPreIntegrationMethod);
+                        } break;
+                    }
+                    switch(msg.renderer_parameters().internal_format()) {
+                        case protocol::RendererParameters_InternalFormat_Float32: {
+                            renderer->setInternalFormat(VolumeRenderer::kFloat32);
+                        } break;
+                        case protocol::RendererParameters_InternalFormat_UInt16: {
+                            renderer->setInternalFormat(VolumeRenderer::kUInt16);
+                        } break;
+                        case protocol::RendererParameters_InternalFormat_UInt8: {
+                            renderer->setInternalFormat(VolumeRenderer::kUInt8);
                         } break;
                     }
                 } break;

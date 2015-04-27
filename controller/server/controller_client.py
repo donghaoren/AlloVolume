@@ -123,20 +123,24 @@ def GetLensParameters():
     response = RequestResponse(msg)
     return ParseLensParameters(response.lens_parameters)
 
-def SetRendererParameters(sender, method, blending_coefficient, step_size = 1.0):
+def SetRendererParameters(sender, method, blending_coefficient, step_size = 1.0, internal_format = "Float32", enable_z_index = False):
     msg = protocol.ControllerRequest()
     msg.sender = sender
     msg.type = protocol.ControllerRequest.SetRendererParameters
     msg.renderer_parameters.blending_coefficient = float(blending_coefficient)
     msg.renderer_parameters.step_size = float(step_size)
     msg.renderer_parameters.method = protocol.RendererParameters.RenderingMethod.Value(method)
+    msg.renderer_parameters.internal_format = protocol.RendererParameters.InternalFormat.Value(internal_format)
+    msg.renderer_parameters.enable_z_index = enable_z_index
     return RequestResponse(msg).status == "success"
 
 def ParseRendererParameters(renderer_parameters):
     return {
         'method': protocol.RendererParameters.RenderingMethod.Name(renderer_parameters.method),
         'blending_coefficient': renderer_parameters.blending_coefficient,
-        'step_size': renderer_parameters.step_size
+        'step_size': renderer_parameters.step_size,
+        'internal_format': protocol.RendererParameters.InternalFormat.Name(renderer_parameters.internal_format),
+        'enable_z_index': renderer_parameters.enable_z_index
     }
 
 def GetRendererParameters():

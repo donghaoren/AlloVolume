@@ -39,9 +39,16 @@ message RendererParameters {
         AdaptiveRKF    = 3;
         PreIntegration = 4;
     }
-    required RenderingMethod method      = 1 [ default = BasicBlending ];
-    required float blending_coefficient  = 2 [ default = 1.0 ];
-    required float step_size             = 3 [ default = 1.0 ];
+    enum InternalFormat {
+        Float32        = 0;
+        UInt16         = 1;
+        UInt8          = 2;
+    }
+    required RenderingMethod method         = 1 [ default = BasicBlending ];
+    required float blending_coefficient     = 2 [ default = 1.0 ];
+    optional float step_size                = 3 [ default = 1.0 ];
+    optional InternalFormat internal_format = 4 [ default = Float32 ];
+    optional bool enable_z_index            = 5 [ default = false ];
 }
 
 message HDRenderingTask {

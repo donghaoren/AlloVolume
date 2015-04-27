@@ -32,6 +32,17 @@
                 <option value="7">7</option>
                 <option value="8">8</option>
             </select>
+            <span class="label">Internal Format: </span>
+            <select id="sel-internal-format">
+                <option value="Float32">Float32</option>
+                <option value="UInt16">UInt16</option>
+                <option value="UInt8">UInt8</option>
+            </select>
+            <span class="label">Enable Z-index: </span>
+            <select id="sel-enable-z-index">
+                <option value="false">Disable</option>
+                <option value="true">Enable</option>
+            </select>
         </div>
         <div class="slider"><span class="label">Blending Coefficient: </span><span id="slider-blending-coefficient"></span></div>
         <div class="slider"><span class="label">Focal Distance: </span><span id="slider-focal-distance"></span></div>
@@ -73,7 +84,9 @@
                 sender: client_id,
                 blending_coefficient: value,
                 method: d3.select("#sel-rendering-method").node().value,
-                step_size: 1.0 / d3.select("#sel-steps").node().value
+                step_size: 1.0 / d3.select("#sel-steps").node().value,
+                enable_z_index: d3.select("#sel-enable-z-index").node().value == "true",
+                internal_format: d3.select("#sel-internal-format").node().value
             }, response_t);
         };
         d3.select("#sel-rendering-method").on("change", function() {
@@ -82,6 +95,13 @@
         d3.select("#sel-steps").on("change", function() {
             sl_blending_coefficient.onChange(sl_blending_coefficient.value);
         });
+        d3.select("#sel-internal-format").on("change", function() {
+            sl_blending_coefficient.onChange(sl_blending_coefficient.value);
+        });
+        d3.select("#sel-enable-z-index").on("change", function() {
+            sl_blending_coefficient.onChange(sl_blending_coefficient.value);
+        });
+
 
         sl_focal_distance.onChange = function(value) {
             wamp.call("allovolume.renderer.set_lens_parameters", {
@@ -140,7 +160,9 @@
                 var p = result[0];
                 sl_blending_coefficient.set(p.blending_coefficient);
                 d3.select("#sel-rendering-method").node().value = p.method;
+                d3.select("#sel-internal-format").node().value = p.internal_format;
                 d3.select("#sel-steps").node().value = Math.round(1.0 / p.step_size);
+                d3.select("#sel-enable-z-index").node().value = p.enable_z_index ? "true" : "false";
                 console.log(p);
             },
             onError: function(err) { console.log('allovolume.renderer.get_renderer_parameters: ' + err); }
