@@ -842,7 +842,7 @@ public:
     VolumeRendererImpl() :
         blend_coefficient(1.0),
         step_size_multiplier(1.0),
-        raycasting_method(kRK4Method),
+        raycasting_method(kBasicBlendingMethod),
         internal_format(kFloat32),
         enable_morton_ordering(false),
         bbox_min(-1e20, -1e20, -1e20),

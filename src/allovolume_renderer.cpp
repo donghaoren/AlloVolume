@@ -157,9 +157,6 @@ public:
                         case protocol::RendererParameters_RenderingMethod_BasicBlending: {
                             renderer->setRaycastingMethod(VolumeRenderer::kBasicBlendingMethod);
                         } break;
-                        case protocol::RendererParameters_RenderingMethod_RK4: {
-                            renderer->setRaycastingMethod(VolumeRenderer::kRK4Method);
-                        } break;
                         case protocol::RendererParameters_RenderingMethod_AdaptiveRKF: {
                             renderer->setRaycastingMethod(VolumeRenderer::kAdaptiveRKFMethod);
                         } break;

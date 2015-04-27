@@ -36,7 +36,6 @@ message LensParameters {
 message RendererParameters {
     enum RenderingMethod {
         BasicBlending  = 1;
-        RK4            = 2;
         AdaptiveRKF    = 3;
         PreIntegration = 4;
     }

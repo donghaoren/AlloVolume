@@ -113,7 +113,6 @@ class VolumeRenderer {
 public:
     enum RaycastingMethod {
         kBasicBlendingMethod = 0,
-        kRK4Method = 1,
         kAdaptiveRKFMethod = 2,
         kPreIntegrationMethod = 3
     };
