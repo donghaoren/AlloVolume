@@ -14,6 +14,7 @@ AlloVolume's components:
     - KD-Tree for fast ray-block intersection.
     - Customizable lens.
     - Pre-integration rendering method to produce high quality images fast.
+    - Z-indexing for better cache utilization.
     - High definintion rendering using adaptive Runge-Kutta-Fehlberg method.
 
 - HTML5-based Parameter Editor.
