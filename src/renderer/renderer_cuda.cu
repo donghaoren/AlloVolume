@@ -241,7 +241,6 @@ struct block_interpolate_morton_t {
     const DataType* data;
     float sx, sy, sz, tx, ty, tz;
     int cxsize, cysize, czsize;
-    int ystride, zstride;
 
     __device__
     inline block_interpolate_morton_t(const BlockDescription& block, const DataType* data_) {
@@ -255,8 +254,6 @@ struct block_interpolate_morton_t {
         cxsize = block.xsize - 2;
         cysize = block.ysize - 2;
         czsize = block.zsize - 2;
-        ystride = block.xsize;
-        zstride = block.xsize * block.ysize;
     }
 
     __device__
@@ -283,19 +280,21 @@ struct block_interpolate_morton_t {
 
         float t000 = data[ix0_i | iy0_i | iz0_i];
         float t001 = data[ix0_i | iy0_i | iz1_i];
+        float t00 = interp(t000, t001, tz);
+
         float t010 = data[ix0_i | iy1_i | iz0_i];
         float t011 = data[ix0_i | iy1_i | iz1_i];
-        float t100 = data[ix1_i | iy0_i | iz0_i];
-        float t101 = data[ix1_i | iy0_i | iz1_i];
-        float t110 = data[ix1_i | iy1_i | iz0_i];
-        float t111 = data[ix1_i | iy1_i | iz1_i];
-
-        float t00 = interp(t000, t001, tz);
         float t01 = interp(t010, t011, tz);
         float t0 = interp(t00, t01, ty);
 
+        float t100 = data[ix1_i | iy0_i | iz0_i];
+        float t101 = data[ix1_i | iy0_i | iz1_i];
         float t10 = interp(t100, t101, tz);
+
+        float t110 = data[ix1_i | iy1_i | iz0_i];
+        float t111 = data[ix1_i | iy1_i | iz1_i];
         float t11 = interp(t110, t111, tz);
+
         float t1 = interp(t10, t11, ty);
 
         return datatype_rescale<DataType>(interp(t0, t1, tx));
