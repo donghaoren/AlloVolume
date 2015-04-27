@@ -195,6 +195,10 @@ LayerTypes["gaussians"] = {
                     key: key
                 });
             }
+            gradients.sort(function(a, b) {
+                if(a.name == b.name) return 0;
+                return a.name < b.name ? -1: 1;
+            });
             item.selectAll("option").data(gradients).enter()
               .append("option")
                 .attr("value", function(d) { return d.key; })
@@ -333,6 +337,10 @@ LayerTypes["gradient"] = {
                     key: key
                 });
             }
+            gradients.sort(function(a, b) {
+                if(a.name == b.name) return 0;
+                return a.name < b.name ? -1: 1;
+            });
             item.selectAll("option").data(gradients).enter()
               .append("option")
                 .attr("value", function(d) { return d.key; })
