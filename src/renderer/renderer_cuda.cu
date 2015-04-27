@@ -602,7 +602,7 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
     traverse_stack_t stack[64];
     int blockinfos_count = kd_tree_block_intersection(pos, d, g_kin, g_kout, g_kin, g_kout, p.kd_tree, p.kd_tree_root, p.blocks, blockinfos, stack);
 
-    // Simple solution: fixed step size.
+    // Some variables.
     float kmax = g_kout;
     float L = p.blend_coefficient;
 
@@ -887,10 +887,14 @@ public:
         }
         blocks.upload();
         buildKDTree();
+        need_preprocess_volume = true;
     }
 
     virtual void setInternalFormat(InternalFormat format) {
-        internal_format = format;
+        if(internal_format != format) {
+            internal_format = format;
+            need_preprocess_volume = true;
+        }
     }
 
     virtual InternalFormat getInternalFormat() {
@@ -898,13 +902,18 @@ public:
     }
 
     virtual void setEnableZIndex(bool enabled) {
-        enable_morton_ordering = enabled;
+        if(enable_morton_ordering != enabled) {
+            enable_morton_ordering = enabled;
+            need_preprocess_volume = true;
+        }
     }
     virtual bool getEnableZIndex() {
         return enable_morton_ordering;
     }
 
     void preprocessVolume() {
+        if(!need_preprocess_volume) return;
+
         float tf_min, tf_max;
         tf->getDomain(tf_min, tf_max);
         TransferFunction::Scale tf_scale = tf->getScale();
@@ -966,17 +975,14 @@ public:
                 } break;
             }
         }
-    }
 
-    bool tf_preint_preprocessed;
+        need_preprocess_volume = false;
+    }
 
     virtual void setTransferFunction(TransferFunction* tf_) {
         tf = tf_;
         tf_preint_preprocessed = false;
-        if(raycasting_method == kPreIntegrationMethod) {
-            uploadTransferFunctionPreintegratedGPU();
-            tf_preint_preprocessed = true;
-        }
+        need_preprocess_volume = true;
     }
 
     virtual void setLens(Lens* lens_) {
@@ -1035,7 +1041,6 @@ public:
         if(clip_ranges_cpu) {
             clip_ranges.allocate(size);
             clip_ranges.upload(clip_ranges_cpu);
-            cudaThreadSynchronize();
         }
     }
 
@@ -1414,6 +1419,9 @@ public:
 
     MirroredMemory<float> preint_yt;
     MirroredMemory<Color> preint_tf, preint_table;
+
+    bool tf_preint_preprocessed;
+    bool need_preprocess_volume;
 };
 
 VolumeRenderer* VolumeRenderer::CreateGPU() {
