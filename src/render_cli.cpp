@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
             renderer->render();
             ts += time_measure.done();
         }
-        printf("Average Render Time (UInt8, no z-index): %.3lf ms\n", ts * 1000 / trails);
+        printf("Average Render Time (UInt8, PreInt, no z-index): %.3lf ms\n", ts * 1000 / trails);
     }
     {
         renderer->setEnableZIndex(true);
@@ -144,7 +144,7 @@ int main(int argc, char* argv[]) {
             renderer->render();
             ts += time_measure.done();
         }
-        printf("Average Render Time (UInt8, no z-index): %.3lf ms\n", ts * 1000 / trails);
+        printf("Average Render Time (UInt8, PreInt, with z-index): %.3lf ms\n", ts * 1000 / trails);
     }
     img->setNeedsDownload();
     img_back->setNeedsDownload();

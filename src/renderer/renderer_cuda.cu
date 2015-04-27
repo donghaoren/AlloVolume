@@ -48,12 +48,12 @@ float clampf(float value, float min, float max) {
 __device__ inline
 float clamp01f(float value) { return __saturatef(value); }
 
-__device__ inline
+// Interleave 2 bits for 10-bit integers, for example:
+// 01100 -> 0001001000000
+//          0  1  1  0  0
+__host__ __device__ inline
 unsigned int interleave10bits2(unsigned short input) {
-    // Interleave 2 bits for 10-bit integers, for example:
-    // 01100 -> 0001001000000
-    //          0  1  1  0  0
-    unsigned int x = input & 0x3ff;
+    unsigned int x = input;
     x = (x | x << 16) & 0x30000ff;
     x = (x | x << 8) & 0x300f00f;
     x = (x | x << 4) & 0x30c30c3;
@@ -61,6 +61,14 @@ unsigned int interleave10bits2(unsigned short input) {
     return x;
 }
 
+// Constant memory seems slower than above.
+// __constant__ unsigned int interleave10bits2_lookup[1024];
+// __device__ inline
+// unsigned int interleave10bits2_l(unsigned short input) {
+//     return interleave10bits2_lookup[input];
+// }
+
+// Round the integer v up to the nearest power of 2.
 __device__ __host__ inline
 unsigned int next_power_of_2(unsigned int v) {
     v--;
