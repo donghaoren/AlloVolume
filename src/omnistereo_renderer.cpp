@@ -48,7 +48,8 @@ enum StereoMode {
 
 struct GPURenderThreadEvent {
     enum Type {
-        kPresent
+        kPresent,
+        kRenderDone
     };
     Type type;
     int thread_id;
@@ -307,6 +308,15 @@ public:
                 case protocol::RendererBroadcast_Type_Render: {
                     // Render the scene.
                     thread_render_scene();
+                    // Present the rendered results.
+                    GPURenderThreadEvent event;
+                    event.type = GPURenderThreadEvent::kRenderDone;
+                    event.thread_id = thread_id;
+                    // Send the present message to the main render thread.
+                    zmq_msg_t msg;
+                    zmq_msg_init_size(&msg, sizeof(GPURenderThreadEvent));
+                    memcpy(zmq_msg_data(&msg), &event, sizeof(GPURenderThreadEvent));
+                    zmq_msg_send(&msg, socket_push, 0);
                 } break;
                 case protocol::RendererBroadcast_Type_Present: {
                     // Present the rendered results.
@@ -639,16 +649,6 @@ public:
         viewport_width = config.get<int>("allovolume.resolution.width", 960);
         viewport_height = config.get<int>("allovolume.resolution.height", 640);
 
-        // glGenTextures(1, &load_depth_cubemap_render_texture);
-        // glBindTexture(GL_TEXTURE_2D, load_depth_cubemap_render_texture);
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-        // glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, viewport_width, viewport_height, 0, GL_RG, GL_FLOAT, 0);
-        // glBindTexture(GL_TEXTURE_2D, 0);
-
         glGenFramebuffers(1, &load_depth_cubemap_framebuffer);
         glBindFramebuffer(GL_FRAMEBUFFER, load_depth_cubemap_framebuffer);
 
@@ -657,12 +657,6 @@ public:
         glBindRenderbuffer(GL_RENDERBUFFER, colorrenderbuffer);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB32F, viewport_width, viewport_height);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, colorrenderbuffer);
-
-        // GLuint depthrenderbuffer;
-        // glGenRenderbuffers(1, &depthrenderbuffer);
-        // glBindRenderbuffer(GL_RENDERBUFFER, depthrenderbuffer);
-        // glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, viewport_width, viewport_height);
-        // glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthrenderbuffer);
 
         GLenum status;
         status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -700,6 +694,17 @@ public:
                 fprintf(stderr, "zmq_msg_recv: %s\n", zmq_strerror(zmq_errno()));
                 break;
             }
+            { // Inspect:
+                int size = zmq_msg_size(&msg);
+                if(size < 256) {
+                    protocol::RendererBroadcast message;
+                    message.ParseFromString(string((char*)zmq_msg_data(&msg), zmq_msg_size(&msg)));
+                    if(message.type() == protocol::RendererBroadcast_Type_Render) {
+                        if(delegate) delegate->onBeforeRender();
+                    }
+                }
+            }
+
             zmq_msg_send(&msg, socket_pub, 0);
         }
     }
@@ -727,6 +732,9 @@ public:
                 if(barrier_thread.size() == total_threads) {
                     if(event.type == GPURenderThreadEvent::kPresent) {
                         if(delegate) delegate->onPresent();
+                    }
+                    if(event.type == GPURenderThreadEvent::kRenderDone) {
+                        if(delegate) delegate->onRender();
                     }
                     barrier_thread.clear();
                 }
@@ -902,3 +910,10 @@ OmnistereoRenderer* OmnistereoRenderer::CreateWithYAMLConfig(const char* path) {
     impl->startup();
     return impl;
 }
+
+void OmnistereoRenderer::Delegate::onBeforeRender() { }
+void OmnistereoRenderer::Delegate::onRender() { }
+void OmnistereoRenderer::Delegate::onPresent() { }
+OmnistereoRenderer::Delegate::~Delegate() { }
+
+OmnistereoRenderer::~OmnistereoRenderer() { }

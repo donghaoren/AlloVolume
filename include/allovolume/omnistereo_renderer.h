@@ -61,10 +61,14 @@ public:
     public:
         // Functions from the delegate are called from another thread.
 
-        // Results are available to present.
-        virtual void onPresent() { }
+        // Right before we render.
+        virtual void onBeforeRender();
+        // Right after things are rendered.
+        virtual void onRender();
+        // The controller tells us to present.
+        virtual void onPresent();
 
-        virtual ~Delegate() { }
+        virtual ~Delegate();
     };
 
     // Is all initialization completed?
@@ -82,7 +86,7 @@ public:
     // Set the delegate.
     virtual void setDelegate(Delegate* delegate) = 0;
 
-    virtual ~OmnistereoRenderer() { }
+    virtual ~OmnistereoRenderer();
 
     // Create the renderer with allovolume.yaml.
     // Call this in the same thread of your OpenGL context.

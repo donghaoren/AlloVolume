@@ -375,18 +375,18 @@ LayerTypes["block"] = {
         return r;
     },
     editor_layer: function(g, tf, layer, info) {
-        var path_tm = g.selectAll("path.tm").data([0]);
-        path_tm.enter().append("path").attr("class", "tm").attr("d", glyph_droplet(15, 15));
+        var path_feather1 = g.selectAll("path.feather1").data([0]);
+        path_feather1.enter().append("path").attr("class", "feather1").attr("d", glyph_droplet(10, 10) + "M-4,-0.5 L4,-0.5 L4,0.5 L-4,0.5");
+        var path_feather2 = g.selectAll("path.feather2").data([0]);
+        path_feather2.enter().append("path").attr("class", "feather2").attr("d", glyph_droplet(10, 10) + "M-4,-0.5 L4,-0.5 L4,0.5 L-4,0.5");
 
         var path_span1 = g.selectAll("path.span1").data([0]);
         path_span1.enter().append("path").attr("class", "span1").attr("d", glyph_droplet(15, 10));
         var path_span2 = g.selectAll("path.span2").data([0]);
         path_span2.enter().append("path").attr("class", "span2").attr("d", glyph_droplet(15, 10));
 
-        var path_feather1 = g.selectAll("path.feather1").data([0]);
-        path_feather1.enter().append("path").attr("class", "feather1").attr("d", glyph_droplet(10, 8));
-        var path_feather2 = g.selectAll("path.feather2").data([0]);
-        path_feather2.enter().append("path").attr("class", "feather2").attr("d", glyph_droplet(10, 8));
+        var path_tm = g.selectAll("path.tm").data([0]);
+        path_tm.enter().append("path").attr("class", "tm").attr("d", glyph_droplet(15, 15));
 
         var path_alpha = g.selectAll("path.alpha").data([0]);
         path_alpha.enter().append("path").attr("class", "alpha").attr("d", glyph_droplet(10, 10));
@@ -404,10 +404,10 @@ LayerTypes["block"] = {
         path_span2.attr("transform", "translate(" + info.tscale(-layer.span + layer.tm) + "," + (info.axis_y) + ")")
                .attr("fill", rgba_color(array_to_color(layer.color.slice(0, 3))));
 
-        path_feather1.attr("transform", "translate(" + info.tscale(layer.span + layer.feather * 5 + layer.tm) + "," + (info.axis_y) + ")")
+        path_feather1.attr("transform", "translate(" + info.tscale(layer.span + layer.feather * 5 + layer.tm) + "," + (info.axis_y) + ") rotate(-90)")
                .attr("fill", rgba_color(array_to_color(layer.color.slice(0, 3))));
 
-        path_feather2.attr("transform", "translate(" + info.tscale(-layer.span - layer.feather * 5 + layer.tm) + "," + (info.axis_y) + ")")
+        path_feather2.attr("transform", "translate(" + info.tscale(-layer.span - layer.feather * 5 + layer.tm) + "," + (info.axis_y) + ") rotate(90)")
                .attr("fill", rgba_color(array_to_color(layer.color.slice(0, 3))));
 
 
@@ -604,6 +604,16 @@ var glyph_droplet = function(height, span, radius) {
         radius = Math.sqrt(s * s * s * s / h / h + s * s);
     }
     return ["M","0","0","L", span / 2, height, "A", radius, radius,"0","1","1", -span / 2, height,"Z"].join(" ");
+};
+
+var glyph_droplet_sharp = function(height, span, radius) {
+    var r2 = height * height / span + span / 4;
+    var r1 = (4 * height * height * span + span * span * span) / (8 * height * height - 2 * span * span);
+    return ["M","0","0",
+            "A", r2, r2, "0", "0", "0", span / 2, height,
+            "A", r1, r1, "0", "1", "1", -span / 2, height,
+            "A", r2, r2, "0", "0", "0", 0, 0, "Z"
+        ].join(" ");
 };
 
 TransferFunctionEditor.prototype.render = function() {
