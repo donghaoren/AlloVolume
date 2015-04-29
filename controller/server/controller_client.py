@@ -62,6 +62,11 @@ def RequestResponse(request):
     response.ParseFromString(controller.recv())
     return response
 
+def Render():
+    msg = protocol.ControllerRequest()
+    msg.type = protocol.ControllerRequest.Render
+    return RequestResponse(msg).status == "success"
+
 def LoadVolume(filename, dataset, description):
     # Serialize the transfer function
     msg = protocol.ControllerRequest()

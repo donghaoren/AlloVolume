@@ -17,6 +17,7 @@ prev          : Goto the previous frame.
 play <fps>    : Playback (negative fps means backwards).
 step <step>   : Set step size for playback.
 stop          : Stop playback.
+autorefresh on/off : Start/stop autorefresh.
 """.strip()
 
 def globFiles(glob_expr):
@@ -46,6 +47,7 @@ class Application:
         self.volume_filename = None
         self.current_volume = None
         self.timer = None
+        self.autorefresh_timer = None
         self.step_size = 1
 
     def setCurrentFrame(self, frame_index):
@@ -64,6 +66,9 @@ class Application:
             self.setCurrentFrame(self.current_frame - self.step_size)
         else:
             self.setCurrentFrame(self.current_frame + self.step_size)
+
+    def refresh(self):
+        controller_client.Render()
 
     def playback(self, fps, reverse = False):
         if self.timer:
@@ -129,6 +134,17 @@ class Application:
                     self.playback(fps)
                 if fps < 0:
                     self.playback(-fps, reverse = True)
+            if cmd == "autorefresh":
+                if line[1] == "on":
+                    if not self.autorefresh_timer:
+                        self.timer = LoopingCall(self.refresh)
+                        self.timer.start(1.0 / 30.0)
+                else:
+                    if self.autorefresh_timer:
+                        self.autorefresh_timer.stop()
+                        self.autorefresh_timer = None
+            if cmd == "refresh":
+                controller_client.Render()
 
         except:
             traceback.print_exc()

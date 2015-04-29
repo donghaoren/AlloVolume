@@ -190,6 +190,10 @@ public:
         }
     }
 
+    void RequestHandler_Render(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        set_needs_render();
+    }
+
     void RequestHandler_LoadVolume(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
         dataset_name = request.volume_dataset();
 
@@ -492,6 +496,7 @@ public:
 
     std::map<protocol::ControllerRequest_Type, controller_handler_t> controller_request_handlers;
     void register_controller_requests() {
+        controller_request_handlers[protocol::ControllerRequest_Type_Render] = &Controller::RequestHandler_Render;
         controller_request_handlers[protocol::ControllerRequest_Type_LoadVolume] = &Controller::RequestHandler_LoadVolume;
         controller_request_handlers[protocol::ControllerRequest_Type_LoadVolumeFromFile] = &Controller::RequestHandler_LoadVolumeFromFile;
         controller_request_handlers[protocol::ControllerRequest_Type_SetPose] = &Controller::RequestHandler_SetPose;
