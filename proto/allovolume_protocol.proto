@@ -144,6 +144,7 @@ message ControllerRequest {
 
         LoadVolume            = 10;
         LoadVolumeFromFile    = 11;
+        LoadVolumeFromData    = 12;
 
         SetPose               = 20;
         GetPose               = 30;
@@ -175,6 +176,7 @@ message ControllerRequest {
     optional string volume_filename                     = 11;
     optional string volume_dataset                      = 12;
     optional string volume_description                  = 13 [ default = "" ];
+    optional bytes volume_data                          = 14;
 
     optional Pose pose                                  = 20;
     optional TransferFunction transfer_function         = 21;

@@ -222,6 +222,17 @@ public:
         set_needs_render();
     }
 
+    void RequestHandler_LoadVolumeFromData(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
+        dataset_name = request.volume_dataset();
+
+        protocol::RendererBroadcast msg;
+        msg.set_type(protocol::RendererBroadcast_Type_LoadVolume);
+        msg.set_volume_data(request.volume_data());
+        zmq_protobuf_send(msg, socket_pubsub);
+
+        set_needs_render();
+    }
+
     void RequestHandler_SetPose(protocol::ControllerRequest& request, protocol::ControllerResponse& response) {
         state.pose = request.pose();
 
@@ -499,6 +510,7 @@ public:
         controller_request_handlers[protocol::ControllerRequest_Type_Render] = &Controller::RequestHandler_Render;
         controller_request_handlers[protocol::ControllerRequest_Type_LoadVolume] = &Controller::RequestHandler_LoadVolume;
         controller_request_handlers[protocol::ControllerRequest_Type_LoadVolumeFromFile] = &Controller::RequestHandler_LoadVolumeFromFile;
+        controller_request_handlers[protocol::ControllerRequest_Type_LoadVolumeFromData] = &Controller::RequestHandler_LoadVolumeFromData;
         controller_request_handlers[protocol::ControllerRequest_Type_SetPose] = &Controller::RequestHandler_SetPose;
         controller_request_handlers[protocol::ControllerRequest_Type_GetPose] = &Controller::RequestHandler_GetPose;
         controller_request_handlers[protocol::ControllerRequest_Type_SetTransferFunction] = &Controller::RequestHandler_SetTransferFunction;

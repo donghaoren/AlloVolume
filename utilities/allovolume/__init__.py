@@ -1,1 +1,2 @@
 from npy2volume import VolumeFrom3DArray
+from controller_protocol import AlloVolumeController
