@@ -137,7 +137,6 @@ public:
     }
 
     void* zmq_context;
-    void* socket_push;
     void* socket_sub;
     char client_name[256];
 
@@ -201,9 +200,9 @@ public:
         zmq_connect(socket_sub, "inproc://render_slaves");
         zmq_setsockopt(socket_sub, ZMQ_SUBSCRIBE, "", 0);
 
-        // socket_push: Send messages to the main renderer thread..
-        void* socket_push = zmq_socket(zmq_context, ZMQ_PUSH);
-        zmq_connect(socket_push, "inproc://render_slaves_push");
+        // socket_message: Send messages to the main renderer thread..
+        void* socket_message = zmq_socket(zmq_context, ZMQ_REQ);
+        zmq_connect(socket_message, "inproc://render_slaves_message");
 
         // socket_feedback: Messages to the controller.
         void* socket_feedback = zmq_socket(zmq_context, ZMQ_PUSH);
@@ -316,7 +315,11 @@ public:
                     zmq_msg_t msg;
                     zmq_msg_init_size(&msg, sizeof(GPURenderThreadEvent));
                     memcpy(zmq_msg_data(&msg), &event, sizeof(GPURenderThreadEvent));
-                    zmq_msg_send(&msg, socket_push, 0);
+                    zmq_msg_send(&msg, socket_message, 0);
+                    zmq_msg_t resp;
+                    zmq_msg_init(&resp);
+                    zmq_msg_recv(&resp, socket_message, 0);
+                    zmq_msg_close(&resp);
                 } break;
                 case protocol::RendererBroadcast_Type_Present: {
                     // Present the rendered results.
@@ -327,7 +330,11 @@ public:
                     zmq_msg_t msg;
                     zmq_msg_init_size(&msg, sizeof(GPURenderThreadEvent));
                     memcpy(zmq_msg_data(&msg), &event, sizeof(GPURenderThreadEvent));
-                    zmq_msg_send(&msg, socket_push, 0);
+                    zmq_msg_send(&msg, socket_message, 0);
+                    zmq_msg_t resp;
+                    zmq_msg_init(&resp);
+                    zmq_msg_recv(&resp, socket_message, 0);
+                    zmq_msg_close(&resp);
                 } break;
                 case protocol::RendererBroadcast_Type_Barrier: {
                     // Barrier.
@@ -715,8 +722,8 @@ public:
     }
 
     void main_thread() {
-        void* socket_pull = zmq_socket(zmq_context, ZMQ_PULL);
-        zmq_bind(socket_pull, "inproc://render_slaves_push");
+        void* socket_rep = zmq_socket(zmq_context, ZMQ_REP);
+        zmq_bind(socket_rep, "inproc://render_slaves_message");
         // zmq_setsockopt_ez(socket_pull, ZMQ_RCVTIMEO, 10); // recv timeout = 10ms.
 
         set<int> barrier_thread;
@@ -724,7 +731,7 @@ public:
         while(1) {
             zmq_msg_t msg;
             zmq_msg_init(&msg);
-            int r = zmq_msg_recv(&msg, socket_pull, 0);
+            int r = zmq_msg_recv(&msg, socket_rep, 0);
             if(r >= 0) {
                 GPURenderThreadEvent event = *(GPURenderThreadEvent*)zmq_msg_data(&msg);
 
@@ -740,6 +747,9 @@ public:
                 }
             }
             zmq_msg_close(&msg);
+            zmq_msg_t resp;
+            zmq_msg_init_size(&msg, 0);
+            zmq_msg_send(&msg, socket_rep, 0);
         }
     }
 
