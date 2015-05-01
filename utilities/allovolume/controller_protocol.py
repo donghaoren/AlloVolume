@@ -1,5 +1,5 @@
 import allovolume_protocol_pb2 as protocol
-
+import os
 import zmq
 import struct
 import math
@@ -10,13 +10,16 @@ import yaml
 class AlloVolumeController:
     """Connects to the allovolume controller."""
 
-    def __init__(self, zmq_context, path = "allovolume.yaml"):
+    def __init__(self, zmq_context = None, path = None):
         """Initialize the connection.
 
         Args:
             zmq_context: ZeroMQ context.
             path: Path to allovolume.yaml.
         """
+
+        if zmq_context == None: zmq_context = zmq.Context()
+        if path == None: path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "allovolume.yaml")
 
         self.config = yaml.load(open(path).read().decode("utf-8"))
         self.zmq_context = zmq_context
