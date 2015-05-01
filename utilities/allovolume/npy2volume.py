@@ -2,13 +2,13 @@ import StringIO
 import struct
 import numpy as np
 
-def VolumeFrom3DArray(array, pos_min, pos_max, fout):
+def VolumeFrom3DArray(array, pos_min, pos_max, fout = None):
     """Create volume file from numpy array.
     Args:
         array: 3D numpy array.
         pos_min: 3-tuple of floats containing the minimum world coordinates.
         pos_max: 3-tuple of floats containing the minimum world coordinates.
-        fout: Output file (file-like object that can `write`).
+        fout: Output file (file-like object that can `write`). If fout is None, return the volume as a binary string.
     """
     fBlocks = StringIO.StringIO()
     fData = StringIO.StringIO()
@@ -25,8 +25,15 @@ def VolumeFrom3DArray(array, pos_min, pos_max, fout):
     ))
     blocks = fBlocks.getvalue()
     data = fData.getvalue()
-    fout.write(struct.pack("Q", 1))
-    fout.write(struct.pack("Q", len(data) / 4))
-    fout.write(data)
-    fout.write(blocks)
-    fout.close()
+    if fout != None:
+        fout.write(struct.pack("Q", 1))
+        fout.write(struct.pack("Q", len(data) / 4))
+        fout.write(data)
+        fout.write(blocks)
+    else:
+        fout = StringIO.StringIO()
+        fout.write(struct.pack("Q", 1))
+        fout.write(struct.pack("Q", len(data) / 4))
+        fout.write(data)
+        fout.write(blocks)
+        return fout.getvalue()
