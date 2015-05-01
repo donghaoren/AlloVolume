@@ -18,21 +18,29 @@ using namespace std;
 
 namespace allovolume {
 
+// Internal data formats.
+typedef float           DataType_Float32;
+typedef unsigned short  DataType_UInt16;
+typedef unsigned char   DataType_UInt8;
+
+// Data format conversion from/to float.
 template<typename DataType> inline __device__ DataType datatype_fromfloat(float t);
-template<> inline __device__ float datatype_fromfloat<float>(float t) { return t; }
-template<> inline __device__ unsigned short datatype_fromfloat<unsigned short>(float t) { return (unsigned short)(t * 65535.0f); }
-template<> inline __device__ unsigned char datatype_fromfloat<unsigned char>(float t) { return (unsigned char)(t * 255.0f); }
+template<> inline __device__ DataType_Float32 datatype_fromfloat<DataType_Float32>(float t) { return t; }
+template<> inline __device__ DataType_UInt16 datatype_fromfloat<DataType_UInt16>(float t) { return (unsigned short)(t * 65535.0f); }
+template<> inline __device__ DataType_UInt8 datatype_fromfloat<DataType_UInt8>(float t) { return (unsigned char)(t * 255.0f); }
 
 template<typename DataType> inline __device__ float datatype_rescale(float t);
-template<> inline __device__ float datatype_rescale<float>(float t) { return t; }
-template<> inline __device__ float datatype_rescale<unsigned short>(float t) { return t / 65535.0f; }
-template<> inline __device__ float datatype_rescale<unsigned char>(float t) { return t / 255.0f; }
+template<> inline __device__ float datatype_rescale<DataType_Float32>(float t) { return t; }
+template<> inline __device__ float datatype_rescale<DataType_UInt16>(float t) { return t / 65535.0f; }
+template<> inline __device__ float datatype_rescale<DataType_UInt8>(float t) { return t / 255.0f; }
 
+// Linear interpolation. out = a * (1 - t) + b * t
 __device__ inline
 float interp(float a, float b, float t) {
     return fmaf(t, b - a, a);
 }
 
+// Integer clamp to range [min, max]
 __device__ __host__ inline
 int clampi(int value, int min, int max) {
     if(value < min) return min;
@@ -40,11 +48,13 @@ int clampi(int value, int min, int max) {
     return value;
 }
 
+// Float clamp to range [min, max]
 __device__ __host__ inline
 float clampf(float value, float min, float max) {
     return fmaxf(min, fminf(max, value));
 }
 
+// Float clamp to [0, 1].
 __device__ inline
 float clamp01f(float value) { return __saturatef(value); }
 
@@ -81,31 +91,34 @@ unsigned int next_power_of_2(unsigned int v) {
     return v;
 }
 
+// Morton Encode (limited to 10bit x, y, z indexes)
 __device__ inline
 unsigned int morton_encode_10bits(unsigned short x, unsigned short y, unsigned short z) {
     return interleave10bits2(x) | (interleave10bits2(y) << 1) | (interleave10bits2(z) << 2);
 }
 
-__device__ inline
-Color tf_interpolate(Color* tf, int tf_size, float t) {
-    float pos = clamp01f(t) * (tf_size - 1.0f);
-    int idx = floor(pos);
-    idx = clampi(idx, 0, tf_size - 2);
-    float diff = pos - idx;
-    Color t0 = tf[idx];
-    Color t1 = tf[idx + 1];
-    return t0 * (1.0 - diff) + t1 * diff;
-}
+// Old Transfer function interpolation code.
+// __device__ inline
+// Color tf_interpolate(Color* tf, int tf_size, float t) {
+//     float pos = clamp01f(t) * (tf_size - 1.0f);
+//     int idx = floor(pos);
+//     idx = clampi(idx, 0, tf_size - 2);
+//     float diff = pos - idx;
+//     Color t0 = tf[idx];
+//     Color t1 = tf[idx + 1];
+//     return t0 * (1.0 - diff) + t1 * diff;
+// }
+//
+// struct transfer_function_t {
+//     Color* data;
+//     int size;
 
-struct transfer_function_t {
-    Color* data;
-    int size;
+//     inline __device__ Color get(float t) {
+//         return tf_interpolate(data, size, t);
+//     }
+// };
 
-    inline __device__ Color get(float t) {
-        return tf_interpolate(data, size, t);
-    }
-};
-
+// KD-Tree data structure.
 struct kd_tree_node_t {
     int split_axis; // 0, 1, 2 for x, y, z; -1 for leaf node, in leaf node, left = block index.
     float split_value;
@@ -113,6 +126,7 @@ struct kd_tree_node_t {
     int left, right;
 };
 
+// Ray marching kernel parameters.
 struct ray_marching_parameters_t {
     const Lens::Ray* rays;
     Color* pixels;
@@ -139,6 +153,7 @@ struct ray_marching_parameters_t {
     Pose pose;
 };
 
+// Compute ray intersection with bounding box.
 __device__ __host__
 inline int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector boxmax, float *tnear, float *tfar) {
     float tmin = FLT_MIN, tmax = FLT_MAX;
@@ -172,10 +187,12 @@ inline int intersectBox(Vector origin, Vector direction, Vector boxmin, Vector b
     return tmax > tmin;
 }
 
+// CUDA Texture definition.
 texture<float, 3, cudaReadModeElementType> volume_texture;
 texture<float4, 1, cudaReadModeElementType> tf_texture;
 texture<float4, 2, cudaReadModeElementType> tf_texture_preintergrated;
 
+// Block interpolation.
 template<typename DataType>
 struct block_interpolate_t {
     const DataType* data;
@@ -236,6 +253,7 @@ struct block_interpolate_t {
     }
 };
 
+// Block interpolation with Morton indexing.
 template<typename DataType>
 struct block_interpolate_morton_t {
     const DataType* data;
@@ -301,17 +319,18 @@ struct block_interpolate_morton_t {
     }
 };
 
-struct block_interpolate_texture_t {
-    Vector scale, translate;
+// Block interpolation with 3D texture (not used yet).
+// struct block_interpolate_texture_t {
+//     Vector scale, translate;
 
-    __device__
-    inline float interpolate(Vector pos) const {
-        float x = fmaf(pos.x, scale.x, translate.x);
-        float y = fmaf(pos.y, scale.y, translate.y);
-        float z = fmaf(pos.z, scale.z, translate.z);
-        return tex3D(volume_texture, x, y, z);
-    }
-};
+//     __device__
+//     inline float interpolate(Vector pos) const {
+//         float x = fmaf(pos.x, scale.x, translate.x);
+//         float y = fmaf(pos.y, scale.y, translate.y);
+//         float z = fmaf(pos.z, scale.z, translate.z);
+//         return tex3D(volume_texture, x, y, z);
+//     }
+// };
 
 struct ray_marching_kernel_blockinfo_t {
     float kin, kout;
@@ -947,31 +966,31 @@ public:
 
             switch(internal_format) {
                 case kFloat32: {
-                    data_processed.allocate_type<float>(block_size_morton * block_count);
-                    preprocess_data_kernel_morton<float><<<diviur(data.size, 64), 64>>>(data.gpu, (float*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                    data_processed.allocate_type<DataType_Float32>(block_size_morton * block_count);
+                    preprocess_data_kernel_morton<DataType_Float32><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_Float32*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt16: {
-                    data_processed.allocate_type<unsigned short>(block_size_morton * block_count);
-                    preprocess_data_kernel_morton<unsigned short><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned short*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                    data_processed.allocate_type<DataType_UInt16>(block_size_morton * block_count);
+                    preprocess_data_kernel_morton<DataType_UInt16><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt16*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt8: {
-                    data_processed.allocate_type<unsigned char>(block_size_morton * block_count);
-                    preprocess_data_kernel_morton<unsigned char><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned char*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                    data_processed.allocate_type<DataType_UInt8>(block_size_morton * block_count);
+                    preprocess_data_kernel_morton<DataType_UInt8><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt8*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
                 } break;
             }
         } else {
             switch(internal_format) {
                 case kFloat32: {
-                    data_processed.allocate_type<float>(data.size);
-                    preprocess_data_kernel<float><<<diviur(data.size, 64), 64>>>(data.gpu, (float*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                    data_processed.allocate_type<DataType_Float32>(data.size);
+                    preprocess_data_kernel<DataType_Float32><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_Float32*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt16: {
-                    data_processed.allocate_type<unsigned short>(data.size);
-                    preprocess_data_kernel<unsigned short><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned short*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                    data_processed.allocate_type<DataType_UInt16>(data.size);
+                    preprocess_data_kernel<DataType_UInt16><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt16*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt8: {
-                    data_processed.allocate_type<unsigned char>(data.size);
-                    preprocess_data_kernel<unsigned char><<<diviur(data.size, 64), 64>>>(data.gpu, (unsigned char*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                    data_processed.allocate_type<DataType_UInt8>(data.size);
+                    preprocess_data_kernel<DataType_UInt8><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt8*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
                 } break;
             }
         }
@@ -1118,13 +1137,13 @@ public:
                 bindTransferFunctionTexture();
                 switch(internal_format) {
                     case kFloat32: {
-                        ray_marching_kernel_basic<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_basic<DataType_Float32, block_interpolate_morton_t<DataType_Float32> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt16: {
-                        ray_marching_kernel_basic<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_basic<DataType_UInt16, block_interpolate_morton_t<DataType_UInt16> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt8: {
-                        ray_marching_kernel_basic<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_basic<DataType_UInt8, block_interpolate_morton_t<DataType_UInt8> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                 }
                 unbindTransferFunctionTexture();
@@ -1133,13 +1152,13 @@ public:
                 bindTransferFunctionTexture2D();
                 switch(internal_format) {
                     case kFloat32: {
-                        ray_marching_kernel_preintegration<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_preintegration<DataType_Float32, block_interpolate_morton_t<DataType_Float32> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt16: {
-                        ray_marching_kernel_preintegration<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_preintegration<DataType_UInt16, block_interpolate_morton_t<DataType_UInt16> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt8: {
-                        ray_marching_kernel_preintegration<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_preintegration<DataType_UInt8, block_interpolate_morton_t<DataType_UInt8> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                 }
                 unbindTransferFunctionTexture2D();
@@ -1148,13 +1167,13 @@ public:
                 bindTransferFunctionTexture();
                 switch(internal_format) {
                     case kFloat32: {
-                        ray_marching_kernel_rkf_double<float, block_interpolate_morton_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_rkf_double<DataType_Float32, block_interpolate_morton_t<DataType_Float32> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt16: {
-                        ray_marching_kernel_rkf_double<unsigned short, block_interpolate_morton_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_rkf_double<DataType_UInt16, block_interpolate_morton_t<DataType_UInt16> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt8: {
-                        ray_marching_kernel_rkf_double<unsigned char, block_interpolate_morton_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_rkf_double<DataType_UInt8, block_interpolate_morton_t<DataType_UInt8> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                 }
                 unbindTransferFunctionTexture();
@@ -1164,13 +1183,13 @@ public:
                 bindTransferFunctionTexture();
                 switch(internal_format) {
                     case kFloat32: {
-                        ray_marching_kernel_basic<float, block_interpolate_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_basic<DataType_Float32, block_interpolate_t<DataType_Float32> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt16: {
-                        ray_marching_kernel_basic<unsigned short, block_interpolate_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_basic<DataType_UInt16, block_interpolate_t<DataType_UInt16> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt8: {
-                        ray_marching_kernel_basic<unsigned char, block_interpolate_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_basic<DataType_UInt8, block_interpolate_t<DataType_UInt8> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                 }
                 unbindTransferFunctionTexture();
@@ -1179,13 +1198,13 @@ public:
                 bindTransferFunctionTexture2D();
                 switch(internal_format) {
                     case kFloat32: {
-                        ray_marching_kernel_preintegration<float, block_interpolate_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_preintegration<DataType_Float32, block_interpolate_t<DataType_Float32> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt16: {
-                        ray_marching_kernel_preintegration<unsigned short, block_interpolate_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_preintegration<DataType_UInt16, block_interpolate_t<DataType_UInt16> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt8: {
-                        ray_marching_kernel_preintegration<unsigned char, block_interpolate_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_preintegration<DataType_UInt8, block_interpolate_t<DataType_UInt8> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                 }
                 unbindTransferFunctionTexture2D();
@@ -1194,13 +1213,13 @@ public:
                 bindTransferFunctionTexture();
                 switch(internal_format) {
                     case kFloat32: {
-                        ray_marching_kernel_rkf_double<float, block_interpolate_t<float> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_rkf_double<DataType_Float32, block_interpolate_t<DataType_Float32> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt16: {
-                        ray_marching_kernel_rkf_double<unsigned short, block_interpolate_t<unsigned short> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_rkf_double<DataType_UInt16, block_interpolate_t<DataType_UInt16> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                     case kUInt8: {
-                        ray_marching_kernel_rkf_double<unsigned char, block_interpolate_t<unsigned char> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
+                        ray_marching_kernel_rkf_double<DataType_UInt8, block_interpolate_t<DataType_UInt8> ><<<dim3(diviur(image->getWidth(), blockdim_x), diviur(image->getHeight(), blockdim_y), 1), dim3(blockdim_x, blockdim_y, 1)>>>(pms);
                     } break;
                 }
                 unbindTransferFunctionTexture();
@@ -1410,8 +1429,10 @@ public:
     InternalFormat internal_format;
     bool enable_morton_ordering;
     RaycastingMethod raycasting_method;
+
     // Global bounding box:
     Vector bbox_min, bbox_max;
+
     // Pose:
     Pose pose;
 
