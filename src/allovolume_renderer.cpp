@@ -86,6 +86,7 @@ public:
         cudaSetDevice(gpu_id);
         renderer.reset(VolumeRenderer::CreateGPU());
         tf.reset(TransferFunction::CreateGaussianTicks(1e-3, 1e8, TransferFunction::kLogScale, 16));
+        renderer->setTransferFunction(tf.get());
         renderer->setBlendingCoefficient(1e9);
         renderer->setBackgroundColor(Color(0, 0, 0, 1));
         for(int i = 0; i < slave->num_projections; i++) {
