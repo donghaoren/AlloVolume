@@ -129,6 +129,9 @@ int main(int argc, char* argv[]) {
         for(int i = 0; i < trails; i++) {
             time_measure.begin("Render");
             renderer->render();
+            img->setNeedsDownload();
+            img_back->setNeedsDownload();
+            img->getPixels(); img_back->getPixels();
             ts += time_measure.done();
         }
         printf("Average Render Time (UInt8, PreInt, no z-index): %.3lf ms\n", ts * 1000 / trails);
@@ -139,6 +142,9 @@ int main(int argc, char* argv[]) {
         for(int i = 0; i < trails; i++) {
             time_measure.begin("Render");
             renderer->render();
+            img->setNeedsDownload();
+            img_back->setNeedsDownload();
+            img->getPixels(); img_back->getPixels();
             ts += time_measure.done();
         }
         printf("Average Render Time (UInt8, PreInt, with z-index): %.3lf ms\n", ts * 1000 / trails);

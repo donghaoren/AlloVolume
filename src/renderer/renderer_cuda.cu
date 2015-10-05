@@ -1420,6 +1420,8 @@ public:
     void preprocessVolume() {
         if(!need_preprocess_volume) return;
 
+        int block_size = 128;
+
         float tf_min, tf_max;
         tf->getDomain(tf_min, tf_max);
         TransferFunction::Scale tf_scale = tf->getScale();
@@ -1454,30 +1456,30 @@ public:
             switch(internal_format) {
                 case kFloat32: {
                     data_processed.allocate_type<DataType_Float32>(block_size_morton * block_count);
-                    preprocess_data_kernel_morton<DataType_Float32><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_Float32*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                    preprocess_data_kernel_morton<DataType_Float32><<<diviur(data.size, block_size), block_size>>>(data.gpu, (DataType_Float32*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt16: {
                     data_processed.allocate_type<DataType_UInt16>(block_size_morton * block_count);
-                    preprocess_data_kernel_morton<DataType_UInt16><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt16*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                    preprocess_data_kernel_morton<DataType_UInt16><<<diviur(data.size, block_size), block_size>>>(data.gpu, (DataType_UInt16*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt8: {
                     data_processed.allocate_type<DataType_UInt8>(block_size_morton * block_count);
-                    preprocess_data_kernel_morton<DataType_UInt8><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt8*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
+                    preprocess_data_kernel_morton<DataType_UInt8><<<diviur(data.size, block_size), block_size>>>(data.gpu, (DataType_UInt8*)data_processed.gpu, data.size, xsize_original, ysize_original, zsize_original, block_size_morton, tf->getScale(), tf_min, tf_max);
                 } break;
             }
         } else {
             switch(internal_format) {
                 case kFloat32: {
                     data_processed.allocate_type<DataType_Float32>(data.size);
-                    preprocess_data_kernel<DataType_Float32><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_Float32*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                    preprocess_data_kernel<DataType_Float32><<<diviur(data.size, block_size), block_size>>>(data.gpu, (DataType_Float32*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt16: {
                     data_processed.allocate_type<DataType_UInt16>(data.size);
-                    preprocess_data_kernel<DataType_UInt16><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt16*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                    preprocess_data_kernel<DataType_UInt16><<<diviur(data.size, block_size), block_size>>>(data.gpu, (DataType_UInt16*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
                 } break;
                 case kUInt8: {
                     data_processed.allocate_type<DataType_UInt8>(data.size);
-                    preprocess_data_kernel<DataType_UInt8><<<diviur(data.size, 64), 64>>>(data.gpu, (DataType_UInt8*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
+                    preprocess_data_kernel<DataType_UInt8><<<diviur(data.size, block_size), block_size>>>(data.gpu, (DataType_UInt8*)data_processed.gpu, data.size, tf->getScale(), tf_min, tf_max);
                 } break;
             }
         }
@@ -1712,7 +1714,6 @@ public:
                 unbindTransferFunctionTexture();
             }
         }
-        cudaThreadSynchronize();
     }
 
     void uploadTransferFunctionTexture() {
@@ -1797,8 +1798,6 @@ public:
             sizeof(float4) * size,
             sizeof(float4) * size, size,
             cudaMemcpyDeviceToDevice);
-
-        cudaThreadSynchronize();
 
         tf_texture_preintergrated.normalized = 1;
         tf_texture_preintergrated.filterMode = cudaFilterModeLinear;
