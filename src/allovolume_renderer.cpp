@@ -188,6 +188,7 @@ public:
                         } break;
                     }
                     TransferFunction::ParseLayers(tf.get(), msg.transfer_function().size(), msg.transfer_function().layers().c_str());
+                    renderer->setTransferFunction(tf.get());
                 } break;
                 case protocol::RendererBroadcast_Type_SetRGBLevels: {
                     const protocol::RGBLevels& levels = msg.rgb_levels();
@@ -267,7 +268,6 @@ public:
         if(!display_enabled) return;
 
         for(int i = 0; i < slave->num_projections; i++) {
-            renderer->setTransferFunction(tf.get());
             renderer->setLens(lenses[i].get());
             renderer->setImage(images[i].get());
             renderer->render();
