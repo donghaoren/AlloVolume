@@ -319,6 +319,340 @@ struct block_interpolate_morton_t {
     }
 };
 
+// Block interpolation with Morton indexing.
+template<typename DataType>
+struct block_interpolate_morton_traversal_t1 {
+    const DataType* data;
+    float sx, sy, sz, tx, ty, tz;
+    int cxsize, cysize, czsize;
+
+    float val_prev, val_this, step_size, kin, kout;
+    int idx, steps;
+    Vector pos, d;
+
+    __device__
+    inline block_interpolate_morton_traversal_t1(const BlockDescription& block, const DataType* data_, Vector pos_, Vector d_, float kin_, float kout_) {
+        data = data_;
+        sx = (block.xsize - block.ghost_count * 2.0f) / (block.max.x - block.min.x);
+        sy = (block.ysize - block.ghost_count * 2.0f) / (block.max.y - block.min.y);
+        sz = (block.zsize - block.ghost_count * 2.0f) / (block.max.z - block.min.z);
+        tx = (float)block.ghost_count - 0.5f - block.min.x * sx;
+        ty = (float)block.ghost_count - 0.5f - block.min.y * sy;
+        tz = (float)block.ghost_count - 0.5f - block.min.z * sz;
+        cxsize = block.xsize - 2;
+        cysize = block.ysize - 2;
+        czsize = block.zsize - 2;
+
+        pos = pos_;
+        d = d_;
+        kin = kin_;
+        kout = kout_;
+
+        float distance = kout - kin;
+        float voxel_size = (block.max.x - block.min.x) / block.xsize;
+        steps = ceil(distance / voxel_size / 1);
+        if(steps > block.xsize * 30) steps = block.xsize * 30;
+        if(steps <= 2) steps = 2;
+        steps *= 5;
+        step_size = distance / steps;
+        idx = steps;
+        val_this = interpolate(pos + d * (kin + step_size * (float)steps));
+    }
+
+    __device__
+    inline bool next() {
+        if(idx > 0) {
+            val_prev = val_this;
+            idx -= 1;
+            val_this = interpolate(pos + d * (kin + step_size * (float)idx));
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    __device__
+    inline float interpolate(Vector pos) const {
+        float px = fmaf(pos.x, sx, tx);
+        float py = fmaf(pos.y, sy, ty);
+        float pz = fmaf(pos.z, sz, tz);
+
+        int ix = clampi(floor(px), 0, cxsize);
+        int iy = clampi(floor(py), 0, cysize);
+        int iz = clampi(floor(pz), 0, czsize);
+
+        float tx = px - ix;
+        float ty = py - iy;
+        float tz = pz - iz;
+
+        // Morton encode.
+        unsigned int ix0_i = interleave10bits2(ix);
+        unsigned int ix1_i = interleave10bits2(ix + 1);
+        unsigned int iy0_i = interleave10bits2(iy) << 1;
+        unsigned int iy1_i = interleave10bits2(iy + 1) << 1;
+        unsigned int iz0_i = interleave10bits2(iz) << 2;
+        unsigned int iz1_i = interleave10bits2(iz + 1) << 2;
+
+        float t000 = data[ix0_i | iy0_i | iz0_i];
+        float t001 = data[ix0_i | iy0_i | iz1_i];
+        float t00 = interp(t000, t001, tz);
+
+        float t010 = data[ix0_i | iy1_i | iz0_i];
+        float t011 = data[ix0_i | iy1_i | iz1_i];
+        float t01 = interp(t010, t011, tz);
+        float t0 = interp(t00, t01, ty);
+
+        float t100 = data[ix1_i | iy0_i | iz0_i];
+        float t101 = data[ix1_i | iy0_i | iz1_i];
+        float t10 = interp(t100, t101, tz);
+
+        float t110 = data[ix1_i | iy1_i | iz0_i];
+        float t111 = data[ix1_i | iy1_i | iz1_i];
+        float t11 = interp(t110, t111, tz);
+
+        float t1 = interp(t10, t11, ty);
+
+        return datatype_rescale<DataType>(interp(t0, t1, tx));
+    }
+};
+
+// Block interpolation with Morton indexing.
+template<typename DataType>
+struct block_interpolate_morton_traversal_t {
+    const DataType* data;
+
+    int xsize, ysize, zsize;
+
+    // Stepping control.
+    int X, Y, Z, step_x, step_y, step_z;
+    float t_adv_x, t_adv_y, t_adv_z;
+    float t_max_x, t_max_y, t_max_z;
+    float tmax, t;
+
+    // Shortcuts.
+    unsigned int Xi0, Yi0, Zi0, Xi1, Yi1, Zi1;
+    float v000, v001, v010, v011, v100, v101, v110, v111;
+
+    float val_prev, val_this, step_size, kin, kout;
+    int idx, steps;
+    Vector pos, d;
+
+
+    __device__ inline int get_x_part(int X) { return interleave10bits2(clampi(X, 0, xsize - 1)); }
+    __device__ inline int get_y_part(int Y) { return interleave10bits2(clampi(Y, 0, ysize - 1)) << 1; }
+    __device__ inline int get_z_part(int Z) { return interleave10bits2(clampi(Z, 0, zsize - 1)) << 2; }
+
+    __device__
+    inline block_interpolate_morton_traversal_t(const BlockDescription& block, const DataType* data_, Vector pos_, Vector d_, float kin_, float kout_) {
+        data = data_;
+        xsize = block.xsize;
+        ysize = block.ysize;
+        zsize = block.zsize;
+
+        // Get rid of kin:
+        tmax = kout_ - kin_;
+        pos = pos_ + d_ * kin_;
+        d = d_;
+        // Now the ray is pos, pos + d * kmax.
+
+        // Convert pos and d to integer voxel space.
+        pos.x = (pos.x - block.min.x) / (block.max.x - block.min.x) * (block.xsize - block.ghost_count * 2) + block.ghost_count - 0.5f;
+        pos.y = (pos.y - block.min.y) / (block.max.y - block.min.y) * (block.ysize - block.ghost_count * 2) + block.ghost_count - 0.5f;
+        pos.z = (pos.z - block.min.z) / (block.max.z - block.min.z) * (block.zsize - block.ghost_count * 2) + block.ghost_count - 0.5f;
+        d.x = d.x / (block.max.x - block.min.x) * (block.xsize - block.ghost_count * 2);
+        d.y = d.y / (block.max.y - block.min.y) * (block.ysize - block.ghost_count * 2);
+        d.z = d.z / (block.max.z - block.min.z) * (block.zsize - block.ghost_count * 2);
+
+        X = pos.x; Y = pos.y; Z = pos.z;
+
+        t = 0;
+
+        Xi0 = get_x_part(X);
+        Yi0 = get_y_part(Y);
+        Zi0 = get_z_part(Z);
+        Xi1 = get_x_part(X + 1);
+        Yi1 = get_y_part(Y + 1);
+        Zi1 = get_z_part(Z + 1);
+
+        v000 = data[Xi0 | Yi0 | Zi0];
+        v001 = data[Xi0 | Yi0 | Zi1];
+        v010 = data[Xi0 | Yi1 | Zi0];
+        v011 = data[Xi0 | Yi1 | Zi1];
+        v100 = data[Xi1 | Yi0 | Zi0];
+        v101 = data[Xi1 | Yi0 | Zi1];
+        v110 = data[Xi1 | Yi1 | Zi0];
+        v111 = data[Xi1 | Yi1 | Zi1];
+
+        // Initialize t_max_x, t_max_y, t_max_z.
+        if(d.x > 0) {
+            t_max_x = (X + 1 - pos.x) / d.x; step_x = 1; t_adv_x = 1.0 / d.x;
+        } else if(d.x < 0) {
+            t_max_x = (X - pos.x) / d.x; t_adv_x = -1.0 / d.x; step_x = -1;
+        } else {
+            t_max_x = 1e20; t_adv_x = 0; step_x = 0;
+        }
+
+        if(d.y > 0) {
+            t_max_y = (Y + 1 - pos.y) / d.y; step_y = 1; t_adv_y = 1.0 / d.y;
+        } else if(d.y < 0) {
+            t_max_y = (Y - pos.y) / d.y; t_adv_y = -1.0 / d.y; step_y = -1;
+        } else {
+            t_max_y = 1e20; t_adv_y = 0; step_y = 0;
+        }
+
+        if(d.z > 0) {
+            t_max_z = (Z + 1 - pos.z) / d.z; step_z = 1; t_adv_z = 1.0 / d.z;
+        } else if(d.z < 0) {
+            t_max_z = (Z - pos.z) / d.z; t_adv_z = -1.0 / d.z; step_z = -1;
+        } else {
+            t_max_z = 1e20; t_adv_z = 0; step_z = 0;
+        }
+
+        // TODO.
+        val_this = 0;
+    }
+
+    __device__
+    inline bool next() {
+        if(t >= tmax) return false;
+
+        float t1 = fmin(tmax, fmin(t_max_z, fmin(t_max_x, t_max_y)));
+        // if(t1 > t) {
+        val_prev = val_this;
+        Vector txyz = pos + d * t1 - Vector(X, Y, Z);
+        float v00 = interp(v000, v001, txyz.z);
+        float v01 = interp(v010, v011, txyz.z);
+        float v10 = interp(v100, v101, txyz.z);
+        float v11 = interp(v110, v111, txyz.z);
+        float v0 = interp(v00, v01, txyz.y);
+        float v1 = interp(v10, v11, txyz.y);
+        float v = interp(v0, v1, txyz.x);
+        val_this = datatype_rescale<DataType>(v);
+        step_size = t1 - t;
+        // }
+
+        if(t_max_x < t_max_y) {
+            if(t_max_x < t_max_z) {
+                t = t_max_x;
+                t_max_x = t_max_x + t_adv_x;
+                if(step_x > 0) {
+                    X += 1;
+                    v000 = v100;
+                    v001 = v101;
+                    v010 = v110;
+                    v011 = v111;
+                    Xi0 = Xi1;
+                    Xi1 = get_x_part(X + 1);
+                    v100 = data[Xi1 | Yi0 | Zi0];
+                    v101 = data[Xi1 | Yi0 | Zi1];
+                    v110 = data[Xi1 | Yi1 | Zi0];
+                    v111 = data[Xi1 | Yi1 | Zi1];
+                } else {
+                    X -= 1;
+                    v100 = v000;
+                    v101 = v001;
+                    v110 = v010;
+                    v111 = v011;
+                    Xi1 = Xi0;
+                    Xi0 = get_x_part(X);
+                    v000 = data[Xi0 | Yi0 | Zi0];
+                    v001 = data[Xi0 | Yi0 | Zi1];
+                    v010 = data[Xi0 | Yi1 | Zi0];
+                    v011 = data[Xi0 | Yi1 | Zi1];
+                }
+            } else {
+                t = t_max_z;
+                t_max_z = t_max_z + t_adv_z;
+                if(step_z > 0) {
+                    Z += 1;
+                    v000 = v001;
+                    v010 = v011;
+                    v100 = v101;
+                    v110 = v111;
+                    Zi0 = Zi1;
+                    Zi1 = get_z_part(Z + 1);
+                    v001 = data[Xi0 | Yi0 | Zi1];
+                    v011 = data[Xi0 | Yi1 | Zi1];
+                    v101 = data[Xi1 | Yi0 | Zi1];
+                    v111 = data[Xi1 | Yi1 | Zi1];
+                } else {
+                    Z -= 1;
+                    v001 = v000;
+                    v011 = v010;
+                    v101 = v100;
+                    v111 = v110;
+                    Zi1 = Zi0;
+                    Zi0 = get_z_part(Z);
+                    v000 = data[Xi0 | Yi0 | Zi0];
+                    v010 = data[Xi0 | Yi1 | Zi0];
+                    v100 = data[Xi1 | Yi0 | Zi0];
+                    v110 = data[Xi1 | Yi1 | Zi0];
+                }
+            }
+        } else {
+            if(t_max_y < t_max_z) {
+                t = t_max_y;
+                t_max_y = t_max_y + t_adv_y;
+                if(step_y > 0) {
+                    Y += 1;
+                    v000 = v010;
+                    v001 = v011;
+                    v100 = v110;
+                    v101 = v111;
+                    Yi0 = Yi1;
+                    Yi1 = get_y_part(Y + 1);
+                    v010 = data[Xi0 | Yi1 | Zi0];
+                    v011 = data[Xi0 | Yi1 | Zi1];
+                    v110 = data[Xi1 | Yi1 | Zi0];
+                    v111 = data[Xi1 | Yi1 | Zi1];
+                } else {
+                    Y -= 1;
+                    v010 = v000;
+                    v011 = v001;
+                    v110 = v100;
+                    v111 = v101;
+                    Yi1 = Yi0;
+                    Yi0 = get_y_part(Y);
+                    v000 = data[Xi0 | Yi0 | Zi0];
+                    v001 = data[Xi0 | Yi0 | Zi1];
+                    v100 = data[Xi1 | Yi0 | Zi0];
+                    v101 = data[Xi1 | Yi0 | Zi1];
+                }
+            } else {
+                t = t_max_z;
+                t_max_z = t_max_z + t_adv_z;
+                if(step_z > 0) {
+                    Z += 1;
+                    v000 = v001;
+                    v010 = v011;
+                    v100 = v101;
+                    v110 = v111;
+                    Zi0 = Zi1;
+                    Zi1 = get_z_part(Z + 1);
+                    v001 = data[Xi0 | Yi0 | Zi1];
+                    v011 = data[Xi0 | Yi1 | Zi1];
+                    v101 = data[Xi1 | Yi0 | Zi1];
+                    v111 = data[Xi1 | Yi1 | Zi1];
+                } else {
+                    Z -= 1;
+                    v001 = v000;
+                    v011 = v010;
+                    v101 = v100;
+                    v111 = v110;
+                    Zi1 = Zi0;
+                    Zi0 = get_z_part(Z);
+                    v000 = data[Xi0 | Yi0 | Zi0];
+                    v010 = data[Xi0 | Yi1 | Zi0];
+                    v100 = data[Xi1 | Yi0 | Zi0];
+                    v110 = data[Xi1 | Yi1 | Zi0];
+                }
+            }
+        }
+
+        return t < tmax;
+    }
+};
+
 // Block interpolation with 3D texture (not used yet).
 // struct block_interpolate_texture_t {
 //     Vector scale, translate;
@@ -703,6 +1037,159 @@ void ray_marching_kernel_preintegration(ray_marching_parameters_t p) {
                 color.b = fmaf(data0.a, color.b, data1.b - data0.b) / data1.a;
                 val_prev = val_this;
             }
+            kmax = kin;
+        }
+        if(is_back_finished) {
+            // Un-premultiply alpha channel.
+            if(color.a != 0) {
+                color.r /= color.a;
+                color.g /= color.a;
+                color.b /= color.a;
+            } else color = Color(0, 0, 0, 0);
+            p.pixels_back[idx] = color;
+            // Reinitialize.
+            is_rendering_back = false;
+            color = p.bg_color;
+            // Repeat the current block, since it's partially finished.
+            cursor -= 1;
+        }
+    }
+
+    // Un-premultiply alpha channel.
+    if(color.a != 0) {
+        color.r /= color.a;
+        color.g /= color.a;
+        color.b /= color.a;
+    } else color = Color(0, 0, 0, 0);
+
+    // Color output.
+    if(is_rendering_back) {
+        p.pixels_back[idx] = color;
+        p.pixels[idx] = p.bg_color;
+    } else {
+        p.pixels[idx] = color;
+    }
+}
+
+template<typename DataType, typename BlockInterpolate>
+__global__
+void ray_marching_kernel_preintegration_voxel_traversal(ray_marching_parameters_t p) {
+    // Pixel index.
+    int px = blockIdx.x * blockDim.x + threadIdx.x;
+    int py = blockIdx.y * blockDim.y + threadIdx.y;
+    if(px >= p.width || py >= p.height) return;
+    register int idx = py * p.width + px;
+
+    // Ray information.
+    Lens::Ray ray = p.rays[idx];
+    register Vector pos = p.pose.rotation.rotate(ray.origin) + p.pose.position;
+    register Vector d = p.pose.rotation.rotate(ray.direction);
+    register float k_front = FLT_MAX;
+    register float k_far = FLT_MAX;
+    if(p.clip_ranges) {
+        float k_near = p.clip_ranges[idx].t_near;
+        k_front = p.clip_ranges[idx].t_front;
+        k_far = p.clip_ranges[idx].t_far;
+        pos += d * k_near;
+        k_front -= k_near;
+        k_far -= k_near;
+    }
+
+    // Initial color (background color).
+    register Color color = p.bg_color;
+
+    // Global ray information.
+    float g_kin, g_kout;
+    intersectBox(pos, d, p.bbox_min, p.bbox_max, &g_kin, &g_kout);
+    if(g_kout < 0) {
+        if(p.pixels) p.pixels[idx] = color;
+        if(p.pixels_back) p.pixels_back[idx] = color;
+        return;
+    }
+    if(g_kin < 0) g_kin = 0;
+
+    // Block intersection.
+    ray_marching_kernel_blockinfo_t blockinfos[128];
+    traverse_stack_t stack[64];
+    int blockinfos_count = kd_tree_block_intersection(pos, d, g_kin, g_kout, g_kin, g_kout, p.kd_tree, p.kd_tree_root, p.blocks, blockinfos, stack);
+
+    // Some variables.
+    float kmax = g_kout;
+    float L = p.blend_coefficient;
+
+    float tf_size = p.tf_size;
+
+    // If rendering with front/back buffer, clamp to k_far, otherwise to k_front.
+    bool is_rendering_back;
+    if(p.pixels_back) {
+        kmax = fminf(k_far, kmax);
+        is_rendering_back = true;
+    } else {
+        kmax = fminf(k_front, kmax);
+        is_rendering_back = false;
+    }
+
+    // Render blocks.
+    for(int cursor = 0; cursor < blockinfos_count; cursor++) {
+        BlockDescription block = p.blocks[blockinfos[cursor].index];
+        float kin = blockinfos[cursor].kin;
+        float kout = blockinfos[cursor].kout;
+        if(kout > kmax) {
+            kout = kmax;
+        }
+        bool is_back_finished = false;
+        if(is_rendering_back) {
+            if(kout <= k_front) {
+                if(color.a != 0) {
+                    color.r /= color.a;
+                    color.g /= color.a;
+                    color.b /= color.a;
+                } else color = Color(0, 0, 0, 0);
+                p.pixels_back[idx] = color;
+                color = p.bg_color;
+                is_rendering_back = false;
+            } else if(kin <= k_front) {
+                kin = k_front;
+                is_back_finished = true;
+            }
+        }
+        if(kin < kout) {
+            // Render this block.
+
+            // Blending with the pre-integrated lookup texture.
+            // See "documents/allovolume-math.pdf" to see how we derived this.
+            // Note that the formulas used in the code is a little bit more refined version,
+            // They are essentially the same, although some terms are moved around for efficiency.
+            // (We want to reduce the number of arithmetic operations in the rendering code).
+
+            // Interpolate context.
+            BlockInterpolate block_access(block, (DataType*)p.data + block.offset, pos, d, kin, kout);
+            while(block_access.next()) {
+                float val_prev = block_access.val_prev;
+                float val_this = block_access.val_this;
+                float step_size = block_access.step_size;
+
+                // The scaling factor of p.
+                float pts_c = (step_size / L) / PREINT_MAX_P;
+                // The minimum v0, v1 difference our pre-integration texture can tolerate.
+                float mindiff = fmaxf(3.0 / tf_size, pts_c);
+                // Make sure val0 < val1 and val1 - val0 >= mindiff.
+                float middle = (val_this + val_prev) / 2.0f;
+                float diff = fmaxf(mindiff, fabs(val_this - val_prev)) / 2.0f;
+                float val0 = middle - diff;
+                float val1 = middle + diff;
+                // Lookup the pre-integration table.
+                float pts = pts_c / (val1 - val0);
+                Color data0 = tf_tex_get2d(pts, val0);
+                Color data1 = tf_tex_get2d(pts, val1);
+                // Update the color.
+                color.a = fmaf(data0.a, color.a, data1.a - data0.a) / data1.a;
+                color.r = fmaf(data0.a, color.r, data1.r - data0.r) / data1.a;
+                color.g = fmaf(data0.a, color.g, data1.g - data0.g) / data1.a;
+                color.b = fmaf(data0.a, color.b, data1.b - data0.b) / data1.a;
+                val_prev = val_this;
+            }
+
             kmax = kin;
         }
         if(is_back_finished) {
