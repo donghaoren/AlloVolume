@@ -49,6 +49,8 @@ public:
     void* socket_events;
     bool needs_render;
     bool is_rendering;
+    double time_render_message;
+    double current_fps;
 
     enum BarrierInfo {
         kRenderPresentBarrier
@@ -114,6 +116,7 @@ public:
                 protocol::RendererBroadcast msg;
                 msg.set_type(protocol::RendererBroadcast_Type_Render);
                 zmq_protobuf_send(msg, socket_pubsub);
+                time_render_message = getPreciseTime();
             }
             {
                 protocol::RendererBroadcast msg;
@@ -142,12 +145,15 @@ public:
                     // Barrier cleared.
                     switch(feedback.barrier_info()) {
                         case kRenderPresentBarrier: {
+                            current_fps = 1.0 / (getPreciseTime() - time_render_message);
                             // Present!
                             protocol::RendererBroadcast msg;
                             msg.set_type(protocol::RendererBroadcast_Type_Present);
                             zmq_protobuf_send(msg, socket_pubsub);
                             is_rendering = false;
                             if(needs_render) set_needs_render();
+
+                            printf("FPS: %.2lf\n", current_fps);
                         } break;
                     }
                 }
