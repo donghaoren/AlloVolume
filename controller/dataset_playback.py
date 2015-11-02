@@ -55,7 +55,7 @@ class Application:
         volume_filename = self.current_volume['files'][self.current_frame]
         if self.volume_filename != volume_filename:
             self.volume_filename = volume_filename
-            controller_client.LoadVolume(volume_filename, self.current_volume['name'], self.current_volume['description'])
+            controller_client.LoadVolumeFromFile(volume_filename, self.current_volume['name'], self.current_volume['description'])
 
     def setCurrentVolume(self, volume):
         self.current_volume = volume

@@ -24,7 +24,7 @@ FIND_PACKAGE ( FreeImage REQUIRED )
 FIND_PACKAGE ( GLUT REQUIRED )
 FIND_PACKAGE ( Boost REQUIRED COMPONENTS filesystem system )
 
-SET ( CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 )
+SET ( CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 -gencode arch=compute_35,code=sm_35 )
 
 LINK_DIRECTORIES (
   ${ZeroMQ_LIBRARY_DIRS}

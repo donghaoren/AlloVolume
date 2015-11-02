@@ -76,6 +76,15 @@ def LoadVolume(filename, dataset, description):
     msg.volume_description = description
     return RequestResponse(msg).status == "success"
 
+def LoadVolumeFromFile(filename, dataset, description):
+    # Serialize the transfer function
+    msg = protocol.ControllerRequest()
+    msg.type = protocol.ControllerRequest.LoadVolumeFromFile
+    msg.volume_filename = filename
+    msg.volume_dataset = dataset
+    msg.volume_description = description
+    return RequestResponse(msg).status == "success"
+
 def ParseTransferFunction(tf):
     result = { }
     result['domain'] = [ tf.domain_min, tf.domain_max ]
